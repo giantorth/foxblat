@@ -185,10 +185,6 @@ class ProcessObserver(EventDispatcher):
                             self._dispatch(pattern)
                         break
 
-                # If pattern was active but no longer matches, clear it
-                if not matched and pattern == self._current_process:
-                    self._current_process = "empty"
-
             # If no patterns matched and we had an active process, dispatch no-games
             if self._current_process != "empty":
                 still_active = False

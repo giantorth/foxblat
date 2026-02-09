@@ -1,6 +1,6 @@
 # Copyright (c) 2025, Tomasz Pakuła Using Arch BTW
 
-from gi.repository import Gtk, Adw
+from gi.repository import Gtk, Adw, GLib
 
 from .button_row import BoxflatButtonRow
 from .switch_row import BoxflatSwitchRow
@@ -35,21 +35,15 @@ class BoxflatPresetDialog(Adw.Dialog, EventDispatcher):
         self._name_row.set_text(preset_name)
 
         process_name = self._preset_handler.get_linked_process()
+        self._process_pattern = process_name
         self._auto_apply = BoxflatSwitchRow("Apply automatically")
         self._auto_apply.set_subtitle("Apply when selected process is running")
 
-        self._auto_apply_name = BoxflatLabelRow("Process pattern")
-        self._auto_apply_name.set_subtitle("Can be a process name or command-line pattern")
-        # Display truncated version if too long, but store full pattern
-        display_name = process_name
-        if len(display_name) > 60:
-            display_name = display_name[:57] + "..."
-        self._auto_apply_name.set_label(display_name)
+        self._auto_apply_name = BoxflatLabelRow("Proccess")
+        self._auto_apply_name.set_wrap(True)
+        self._auto_apply_name.set_label(process_name)
         self._auto_apply_name.set_active(False)
         self._auto_apply.subscribe(self._auto_apply_name.set_active)
-
-        # Store the full pattern for saving
-        self._full_process_pattern = process_name
 
         self._auto_apply_select = BoxflatAdvanceRow("Select running process")
         self._auto_apply_select.set_active(False)
@@ -145,8 +139,7 @@ class BoxflatPresetDialog(Adw.Dialog, EventDispatcher):
 
         process_pattern = ""
         if self._auto_apply.get_value():
-            # Use the full pattern, not the potentially truncated display label
-            process_pattern = self._full_process_pattern
+            process_pattern = self._process_pattern
         self._preset_handler.set_linked_process(process_pattern)
 
         self._preset_handler.set_default(self._default.get_value())
@@ -168,53 +161,52 @@ class BoxflatPresetDialog(Adw.Dialog, EventDispatcher):
         group = Adw.PreferencesGroup()
         filter_text = entry.get_text()
 
-        page.remove(self._process_list_group)
-        page.add(group)
-        self._process_list_group = group
-
         if len(filter_text) < 3:
             group.add(BoxflatLabelRow("Enter at least three letters"))
-            return
+        else:
+            processes = process_handler.list_processes(filter_text)
 
-        processes = process_handler.list_processes(filter_text)
+            if not processes:
+                group.add(BoxflatLabelRow("No matching processes found"))
+            else:
+                # Sort by process name for better UX
+                processes.sort(key=lambda p: p.name.lower())
 
-        if not processes:
-            group.add(BoxflatLabelRow("No matching processes found"))
-            return
+                for process_info in processes:
+                    # Create a row that shows both name and command line
+                    row = Adw.ActionRow()
+                    row.set_title(process_info.name)
 
-        # Sort by process name for better UX
-        processes.sort(key=lambda p: p.name.lower())
+                    # Show command line as subtitle if it differs from name
+                    if process_info.cmdline != process_info.name:
+                        # Truncate long command lines for display
+                        cmdline_display = process_info.cmdline
+                        if len(cmdline_display) > 80:
+                            cmdline_display = cmdline_display[:77] + "..."
+                        row.set_subtitle(cmdline_display)
 
-        for process_info in processes:
-            # Create a row that shows both name and command line
-            row = Adw.ActionRow()
-            row.set_title(process_info.name)
+                    # When clicked, use the full command line as the pattern
+                    # This allows matching specific games even with same executable
+                    row.connect("activated", lambda r, cmd=process_info.cmdline: self._select_process(cmd))
+                    row.set_activatable(True)
+                    group.add(row)
 
-            # Show command line as subtitle if it differs from name
-            if process_info.cmdline != process_info.name:
-                # Truncate long command lines for display
-                cmdline_display = process_info.cmdline
-                if len(cmdline_display) > 80:
-                    cmdline_display = cmdline_display[:77] + "..."
-                row.set_subtitle(cmdline_display)
+        # Defer widget swap to avoid GTK layout conflicts during signal handling
+        old_group = self._process_list_group
+        self._process_list_group = group
 
-            # When clicked, use the full command line as the pattern
-            # This allows matching specific games even with same executable
-            row.connect("activated", lambda r, cmd=process_info.cmdline: self._select_process(cmd))
-            row.set_activatable(True)
-            group.add(row)
+        def swap_groups():
+            page.remove(old_group)
+            page.add(group)
+
+        GLib.idle_add(swap_groups)
 
 
     def _select_process(self, cmdline_pattern: str):
         """Called when user selects a process from the list."""
         self._navigation.pop()
-        # Store the full pattern
-        self._full_process_pattern = cmdline_pattern
-        # Display truncated version if needed
-        display_pattern = cmdline_pattern
-        if len(display_pattern) > 60:
-            display_pattern = display_pattern[:57] + "..."
-        self._auto_apply_name.set_label(display_pattern)
+        self._process_pattern = cmdline_pattern
+        self._auto_apply_name.set_label(cmdline_pattern)
 
 
     def _open_process_page(self, *rest):
