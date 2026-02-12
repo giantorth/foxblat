@@ -316,7 +316,7 @@ class MyApp(Adw.Application):
         self._panels["Multifunction Stalks"] = StalksSettings(self.switch_panel, self._cm, self._hid_handler, self._settings)
         self._panels["Universal Hub"] = HubSettings(self.switch_panel, self._cm)
 
-        self._panels["Presets"] = PresetSettings(self.switch_panel, self._cm, self._settings, self._panels["H-Pattern Shifter"], self._panels["Multifunction Stalks"])
+        self._panels["Presets"] = PresetSettings(self.switch_panel, self._cm, self._settings, self._panels["H-Pattern Shifter"], self._panels["Multifunction Stalks"], self._simapi_handler)
         self._panels["Presets"].set_application(self)
 
         # Subscribe preset panel to IPC preset load events

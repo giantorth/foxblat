@@ -129,8 +129,65 @@ class ProcessObserver(EventDispatcher):
         super().__init__()
         self._shutdown = Event()
         self._current_process = "empty"
+        self._current_vehicle = ""
+        self._vehicle_preset_active = False  # Track if a vehicle-specific preset is currently loaded
+        self._simapi = None
+        self._vehicle_presets = {}  # Maps "process|vehicle" -> True
+        self._process_only_presets = set()  # Process patterns that have process-only presets
         self._register_event("no-games")
         Thread(target=self._process_observer_worker, daemon=True).start()
+
+
+    def set_simapi_handler(self, simapi_handler) -> None:
+        """Set the SimAPI handler for vehicle tracking."""
+        self._simapi = simapi_handler
+        if simapi_handler:
+            simapi_handler.subscribe("car-name", self._on_vehicle_change)
+
+
+    def _on_vehicle_change(self, vehicle_name: str) -> None:
+        """Handle vehicle change from SimAPI telemetry."""
+        if vehicle_name == self._current_vehicle:
+            return
+
+        self._current_vehicle = vehicle_name
+
+        if self._current_process == "empty":
+            return  # No game running, ignore vehicle changes
+
+        # Try to find a process+vehicle combo preset
+        combo_key = f"{self._current_process}|{vehicle_name}"
+        if combo_key in self._vehicle_presets:
+            print(f"Vehicle preset matched: {combo_key}")
+            self._vehicle_preset_active = True
+            self._dispatch(combo_key)
+        elif self._vehicle_preset_active and self._current_process in self._process_only_presets:
+            # Vehicle changed from one with a preset to one without - load process-only fallback
+            print(f"No vehicle preset for '{vehicle_name}', falling back to process preset")
+            self._vehicle_preset_active = False
+            self._dispatch(self._current_process)
+
+
+    def register_vehicle_preset(self, process_pattern: str, vehicle_name: str) -> None:
+        """Register a process+vehicle combination preset."""
+        if not process_pattern or not vehicle_name:
+            return
+
+        combo_key = f"{process_pattern}|{vehicle_name}"
+        self._vehicle_presets[combo_key] = True
+        self._register_event(combo_key)
+        print(f"Registered vehicle preset: {combo_key}")
+
+
+    def register_process_only_preset(self, process_pattern: str) -> None:
+        """Mark a process pattern as having a process-only (fallback) preset."""
+        if process_pattern:
+            self._process_only_presets.add(process_pattern)
+
+
+    def get_current_vehicle(self) -> str:
+        """Get the current vehicle name from telemetry."""
+        return self._current_vehicle
 
 
     def _matches_pattern(self, pattern: str, process_info: ProcessInfo) -> bool:
@@ -202,6 +259,8 @@ class ProcessObserver(EventDispatcher):
                 if not still_active:
                     print(f"Process pattern \"{self._current_process}\" no longer active")
                     self._current_process = "empty"
+                    self._current_vehicle = ""  # Clear vehicle state when game exits
+                    self._vehicle_preset_active = False
                     self._dispatch("no-games")
 
 
@@ -227,3 +286,6 @@ class ProcessObserver(EventDispatcher):
             if name == "no-games":
                 continue
             self._deregister_event(name)
+        self._vehicle_presets.clear()
+        self._process_only_presets.clear()
+        self._vehicle_preset_active = False

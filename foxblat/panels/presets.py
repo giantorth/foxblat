@@ -16,8 +16,9 @@ from gi.repository.Gio import Notification, NotificationPriority
 
 class PresetSettings(SettingsPanel):
     def __init__(self, button_callback, connection_manager: MozaConnectionManager, settings: SettingsHandler,
-                 hpattern: HPatternSettings, stalks: StalksSettings):
+                 hpattern: HPatternSettings, stalks: StalksSettings, simapi_handler=None):
         self._settings = settings
+        self._simapi = simapi_handler
 
         self._hpattern = hpattern
         self._stalks = stalks
@@ -131,6 +132,7 @@ class PresetSettings(SettingsPanel):
         self._includes["stalks"] = row.get_value
 
         self._observer = process_handler.ProcessObserver()
+        self._observer.set_simapi_handler(self._simapi)
         self._observer.subscribe("no-games", self._load_default)
 
         if Adw.get_minor_version() >= 6:
@@ -258,8 +260,19 @@ class PresetSettings(SettingsPanel):
 
             pm.set_name(file)
             process = pm.get_linked_process()
-            self._observer.register_process(process)
-            self._observer.subscribe(process, self._load_preset, preset_name, True)
+            vehicle = pm.get_linked_vehicle()
+
+            if process and vehicle:
+                # Process+vehicle combo preset - higher priority
+                self._observer.register_process(process)
+                self._observer.register_vehicle_preset(process, vehicle)
+                combo_key = f"{process}|{vehicle}"
+                self._observer.subscribe(combo_key, self._load_preset, preset_name, True)
+            elif process:
+                # Process-only preset - fallback
+                self._observer.register_process(process)
+                self._observer.register_process_only_preset(process)
+                self._observer.subscribe(process, self._load_preset, preset_name, True)
 
             if pm.is_default():
                 print(f"Found default preset: {preset_name}")
@@ -301,7 +314,7 @@ class PresetSettings(SettingsPanel):
         if file_name == "":
             return
 
-        dialog = FoxblatPresetDialog(self._presets_path, file_name)
+        dialog = FoxblatPresetDialog(self._presets_path, file_name, self._simapi)
         dialog.subscribe("save", self._handle_preset_save)
         dialog.subscribe("delete", self._delete_preset)
         dialog.present(self._content)

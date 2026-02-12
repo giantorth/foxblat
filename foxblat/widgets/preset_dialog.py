@@ -13,11 +13,13 @@ from foxblat.preset_handler import MozaPresetHandler
 from os import environ
 
 class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
-    def __init__(self, presets_path: str, file_name: str):
+    def __init__(self, presets_path: str, file_name: str, simapi_handler=None):
         Adw.Dialog.__init__(self)
         EventDispatcher.__init__(self)
 
         self._process_list_group = None
+        self._simapi = simapi_handler
+        self._current_vehicle_from_simapi = ""
         self._preset_handler = MozaPresetHandler(None)
         self._preset_handler.set_path(presets_path)
         self._preset_handler.set_name(file_name)
@@ -52,6 +54,25 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
 
         self._auto_apply.set_value(len(process_name) > 0, mute=False)
 
+        # Vehicle linking UI
+        linked_vehicle = self._preset_handler.get_linked_vehicle()
+        self._link_vehicle = FoxblatSwitchRow("Link to current vehicle")
+        self._link_vehicle.set_subtitle("Apply only when driving this car")
+        self._link_vehicle.set_active(False)
+        self._auto_apply.subscribe(self._link_vehicle.set_active)
+
+        self._vehicle_name_row = FoxblatLabelRow("Vehicle")
+        self._vehicle_name_row.set_wrap(True)
+        self._vehicle_name_row.set_label(linked_vehicle if linked_vehicle else "No vehicle detected")
+        self._vehicle_name_row.set_active(False)
+        self._link_vehicle.subscribe(self._vehicle_name_row.set_active)
+
+        self._link_vehicle.set_value(len(linked_vehicle) > 0, mute=False)
+
+        # Subscribe to SimAPI for current vehicle updates
+        if simapi_handler:
+            simapi_handler.subscribe("car-name", self._on_vehicle_update)
+
         self._default = FoxblatSwitchRow("Default preset", "Activate if no other automatic preset applies")
         self._default.set_value(self._preset_handler.is_default())
 
@@ -65,6 +86,8 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
         group.add(self._auto_apply)
         group.add(self._auto_apply_name)
         group.add(self._auto_apply_select)
+        group.add(self._link_vehicle)
+        group.add(self._vehicle_name_row)
         page.add(group)
 
         group = Adw.PreferencesGroup(margin_start=10, margin_end=10)
@@ -134,6 +157,13 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
         # self.set_title(preset_name)
 
 
+    def _on_vehicle_update(self, vehicle_name: str):
+        """Update UI when SimAPI reports current vehicle."""
+        self._current_vehicle_from_simapi = vehicle_name
+        if vehicle_name:
+            GLib.idle_add(self._vehicle_name_row.set_label, vehicle_name)
+
+
     def _notify_save(self, *rest):
         self.close()
 
@@ -141,6 +171,16 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
         if self._auto_apply.get_value():
             process_pattern = self._process_pattern
         self._preset_handler.set_linked_process(process_pattern)
+
+        # Save vehicle link if enabled and we have a vehicle
+        vehicle_name = ""
+        if self._auto_apply.get_value() and self._link_vehicle.get_value():
+            # Use current vehicle from SimAPI if available, otherwise keep existing
+            if self._current_vehicle_from_simapi:
+                vehicle_name = self._current_vehicle_from_simapi
+            else:
+                vehicle_name = self._preset_handler.get_linked_vehicle()
+        self._preset_handler.set_linked_vehicle(vehicle_name)
 
         self._preset_handler.set_default(self._default.get_value())
 

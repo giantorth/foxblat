@@ -298,6 +298,24 @@ class MozaPresetHandler(SimpleEventDispatcher):
         self._set_preset_data(data)
 
 
+    def get_linked_vehicle(self) -> str:
+        data = self._get_preset_data()
+
+        if data is None:
+            return ""
+
+        if "linked-vehicle" not in data:
+            return ""
+
+        return data["linked-vehicle"]
+
+
+    def set_linked_vehicle(self, vehicle_name: str):
+        data = self._get_preset_data()
+        data["linked-vehicle"] = vehicle_name
+        self._set_preset_data(data)
+
+
     def is_default(self) -> bool:
         data = self._get_preset_data()
 
