@@ -189,6 +189,10 @@ class ProcessObserver(EventDispatcher):
         """Get the current vehicle name from telemetry."""
         return self._current_vehicle
 
+    def has_active_process(self) -> bool:
+        """Check if a process preset is currently active."""
+        return self._current_process != "empty"
+
 
     def _matches_pattern(self, pattern: str, process_info: ProcessInfo) -> bool:
         """Check if a process matches the given pattern.

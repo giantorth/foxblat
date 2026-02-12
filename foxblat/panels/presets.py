@@ -327,6 +327,10 @@ class PresetSettings(SettingsPanel):
 
         if delay > 0:
             sleep(delay)
+            # After delay, check if a process preset was already loaded
+            if self._observer.has_active_process():
+                print("Skipping default preset - process preset already active")
+                return
 
         print(f"Loading default preset: {self._default_preset}")
         self._load_preset(self._default_preset, default=True)
