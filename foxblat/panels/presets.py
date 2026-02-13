@@ -6,12 +6,13 @@ from .stalks import StalksSettings
 from foxblat.connection_manager import MozaConnectionManager
 from foxblat.widgets import *
 from foxblat.preset_handler import MozaPresetHandler
+from foxblat.pithouse_converter import PithouseConverter
 from foxblat.settings_handler import SettingsHandler
 import os
 from threading import Thread
 from time import sleep
 
-from gi.repository import GLib
+from gi.repository import Gtk, Gio, GLib
 from gi.repository.Gio import Notification, NotificationPriority
 
 class PresetSettings(SettingsPanel):
@@ -156,6 +157,12 @@ class PresetSettings(SettingsPanel):
             self._name_row.connect("notify::text-length", lambda e, *args: self._save_row.set_sensitive(e.get_text_length()))
             self._save_row.set_sensitive(False)
 
+            # Import Pithouse preset button
+            self._import_row = Adw.ButtonRow(title="Import Pithouse Preset")
+            self._import_row.set_end_icon_name("document-open-symbolic")
+            self._add_row(self._import_row)
+            self._import_row.connect("activated", self._import_pithouse_preset)
+
         # compatibility with libadwaita older than 1.6
         else:
             self._save_row = FoxblatButtonRow("Save preset", "Save")
@@ -164,6 +171,11 @@ class PresetSettings(SettingsPanel):
             self._current_row.subscribe(lambda v: expander.set_expanded(False))
             self._current_row.set_active(False)
             self._name_row.connect("notify::text-length", lambda e, *args: self._save_row.set_active(e.get_text_length()))
+
+            # Import Pithouse preset button for older libadwaita
+            self._import_row = FoxblatButtonRow("Import Pithouse preset", "Import")
+            self._add_row(self._import_row)
+            self._current_row.subscribe(self._import_pithouse_preset)
 
 
 
@@ -399,3 +411,58 @@ class PresetSettings(SettingsPanel):
         print(f"[PRESETS] update_preset_name called with: {preset_name}")
         preset_name = preset_name.removesuffix(".yml")
         GLib.idle_add(self._name_row.set_text, preset_name)
+
+
+    def _import_pithouse_preset(self, *args):
+        """Open file dialog to import a Moza Pithouse preset."""
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Import Pithouse Preset")
+
+        # Set up JSON filter
+        json_filter = Gtk.FileFilter()
+        json_filter.set_name("JSON files")
+        json_filter.add_mime_type("application/json")
+        json_filter.add_pattern("*.json")
+
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(json_filter)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(json_filter)
+
+        dialog.open(self._content.get_root(), None, self._on_pithouse_file_selected)
+
+
+    def _on_pithouse_file_selected(self, dialog: Gtk.FileDialog, result):
+        """Handle file selection for Pithouse import."""
+        try:
+            file = dialog.open_finish(result)
+            if file is None:
+                return
+            filepath = file.get_path()
+        except GLib.Error:
+            # User cancelled the dialog
+            return
+
+        Thread(target=self._convert_and_save_pithouse, args=[filepath], daemon=True).start()
+
+
+    def _convert_and_save_pithouse(self, filepath: str):
+        """Convert Pithouse preset and save it (runs in background thread)."""
+        converter = PithouseConverter()
+        converted, preset_name, error = converter.load_and_convert(filepath)
+
+        if error:
+            GLib.idle_add(self.show_toast, f"Import failed: {error}", 3)
+            return
+
+        # Save the converted preset
+        pm = MozaPresetHandler(None)
+        pm.set_path(self._presets_path)
+        pm.set_name(preset_name)
+        pm.save_imported_preset(converted)
+
+        GLib.idle_add(self.show_toast, f"Imported preset: {preset_name}", 2)
+        GLib.idle_add(self.list_presets)
+
+        # Load the preset to apply settings to device
+        GLib.idle_add(self._load_preset, preset_name)

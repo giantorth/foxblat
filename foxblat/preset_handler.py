@@ -465,3 +465,16 @@ class MozaPresetHandler(SimpleEventDispatcher):
 
         self._set_preset_data(data)
         self.set_name(tmp)
+
+
+    def save_imported_preset(self, preset_data: dict) -> None:
+        """Save an imported preset directly without reading from device.
+
+        Args:
+            preset_data: Complete preset dictionary to save (e.g., from PithouseConverter)
+        """
+        if not self._path or not self._name:
+            return
+
+        self._set_preset_data(preset_data)
+        self._dispatch()

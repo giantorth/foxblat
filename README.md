@@ -30,6 +30,7 @@ Foxblat provides the following additional features:
   * An example plugin for the Aliexpress GX-100 shifter is included, linux users need [this driver](https://github.com/JacKeTUs/hid-gx100-shifter)
 * UDP control.  Load a preset or set steering angle remotely.
   * [Read UDP documentation here](examples/IPC_README.md)
+* Importing Pithouse JSON presets is supported
 
 ### Firmware upgrades
 Not supported at this time.
