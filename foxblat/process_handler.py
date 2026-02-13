@@ -176,7 +176,7 @@ class ProcessObserver(EventDispatcher):
         combo_key = f"{process_pattern}|{vehicle_name}"
         self._vehicle_presets[combo_key] = True
         self._register_event(combo_key)
-        print(f"Registered vehicle preset: {combo_key}")
+        #print(f"Registered vehicle preset: {combo_key}")
 
 
     def register_process_only_preset(self, process_pattern: str) -> None:

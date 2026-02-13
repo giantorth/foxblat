@@ -59,9 +59,9 @@ class GX100Panel(PluginPanel):
         self._h_sens_row.set_value(self._h_sensitivity)
         self._h_sens_row.subscribe(self._on_h_sens_changed)
 
-        self._h_cal_row = FoxblatButtonRow("Calibration", "Start")
+        self._h_cal_row = FoxblatButtonRow("Calibration")
+        self._h_cal_btn = self._h_cal_row.add_button("Start", self._toggle_h_calibration)
         self._add_row(self._h_cal_row)
-        self._h_cal_row.subscribe(self._toggle_h_calibration)
 
         # --- Sequential Settings ---
         self.add_preferences_group("Sequential Shifter")
@@ -71,9 +71,9 @@ class GX100Panel(PluginPanel):
         self._seq_sens_row.set_value(self._seq_sensitivity)
         self._seq_sens_row.subscribe(self._on_seq_sens_changed)
 
-        self._seq_cal_row = FoxblatButtonRow("Calibration", "Start")
+        self._seq_cal_row = FoxblatButtonRow("Calibration")
+        self._seq_cal_btn = self._seq_cal_row.add_button("Start", self._toggle_seq_calibration)
         self._add_row(self._seq_cal_row)
-        self._seq_cal_row.subscribe(self._toggle_seq_calibration)
 
         # --- Configuration ---
         self.add_preferences_group("Configuration")
@@ -206,32 +206,26 @@ class GX100Panel(PluginPanel):
     def _toggle_h_calibration(self, *args):
         """Toggle H-pattern calibration mode."""
         # Report: [0x01, 0x01] to start, [0x01, 0x02] to finish
-        if self._h_calibrating:
-            data = bytes([0x01, 0x02])
-            self._h_cal_row.set_button_label("Start")
-        else:
-            data = bytes([0x01, 0x01])
-            self._h_cal_row.set_button_label("Finish")
+        data = bytes([0x01, 0x02 if self._h_calibrating else 0x01])
 
         if self._send_report(data):
             self._h_calibrating = not self._h_calibrating
+            # Update UI after successful send
+            self._h_cal_btn.set_label("Finish" if self._h_calibrating else "Start")
             # Disable seq calibration while H is active
-            self._seq_cal_row.set_active(not self._h_calibrating)
+            self._seq_cal_btn.set_sensitive(not self._h_calibrating)
 
     def _toggle_seq_calibration(self, *args):
         """Toggle sequential calibration mode."""
         # Report: [0x01, 0x03] to start, [0x01, 0x04] to finish
-        if self._seq_calibrating:
-            data = bytes([0x01, 0x04])
-            self._seq_cal_row.set_button_label("Start")
-        else:
-            data = bytes([0x01, 0x03])
-            self._seq_cal_row.set_button_label("Finish")
+        data = bytes([0x01, 0x04 if self._seq_calibrating else 0x03])
 
         if self._send_report(data):
             self._seq_calibrating = not self._seq_calibrating
+            # Update UI after successful send
+            self._seq_cal_btn.set_label("Finish" if self._seq_calibrating else "Start")
             # Disable H calibration while seq is active
-            self._h_cal_row.set_active(not self._seq_calibrating)
+            self._h_cal_btn.set_sensitive(not self._seq_calibrating)
 
     def _apply_config(self, *args):
         """Send configuration to device."""
