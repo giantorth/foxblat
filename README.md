@@ -3,6 +3,8 @@ Foxblat for Moza Racing. Control your Moza gear settings... and more!
 
 This is a fork of the excellent [Boxflat by Lawstorant](https://github.com/Lawstorant/boxflat).  If you enjoy this project, please [sponsor](https://github.com/sponsors/Lawstorant) the original author of this program.
 
+This fork is for the experimental features that may not appear in the original.
+
 <img alt="Wheelbase panel" src="screens/base.png">
 
 Flatpack coming soon 
@@ -24,8 +26,10 @@ Foxblat provides the following additional features:
 * Telemetry support via Simd/SimAPI: https://github.com/Spacefreak18/simapi
 * Presets can be saved on extended paths, not limited to process name only
 * Presets can be saved by vehicle (When simd is running)
-* Plugins are supported, read more [here](plugins/READMED.md)
+* Plugins are supported to extend support to additional devices, [read the documentation here](plugins/README.md)
   * An example plugin for the Aliexpress GX-100 shifter is included, linux users need [this driver](https://github.com/JacKeTUs/hid-gx100-shifter)
+* UDP control.  Load a preset or set steering angle remotely.
+  * [Read more here](examples/IPC_README.md)
 
 ### Firmware upgrades
 Not supported at this time.
