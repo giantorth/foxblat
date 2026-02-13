@@ -51,6 +51,11 @@ class GX100Panel(PluginPanel):
         self._add_row(self._seq_gear_row)
         self._seq_gear_row.set_label("-")
 
+        # Extra buttons indicator (12-16)
+        self._extra_btn_row = FoxblatLabelRow("Extra Buttons")
+        self._add_row(self._extra_btn_row)
+        self._extra_btn_row.set_label("-")
+
         # --- H-Pattern Settings ---
         self.add_preferences_group("H-Pattern Shifter")
 
@@ -128,6 +133,7 @@ class GX100Panel(PluginPanel):
         GLib.idle_add(self._status_row.set_label, "Disconnected")
         GLib.idle_add(self._h_gear_row.set_label, "N")
         GLib.idle_add(self._seq_gear_row.set_label, "-")
+        GLib.idle_add(self._extra_btn_row.set_label, "-")
 
     def _find_hidraw(self, device: PluginDeviceInfo):
         """Find the hidraw device path for HID output reports."""
@@ -155,10 +161,10 @@ class GX100Panel(PluginPanel):
         """Read evdev events and update gear display."""
         h_pattern_gears = {
             1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6",
-            7: "7", 8: "8", 11: "R",
-            12: "B1", 13: "B2", 14: "B3", 15: "B4", 16: "B5"
+            7: "7", 8: "8", 11: "R"
         }
         seq_gears = {9: "Down", 10: "Up"}
+        extra_buttons = {12: "B1", 13: "B2", 14: "B3", 15: "B4", 16: "B5"}
 
         while self._running.is_set() and self._device:
             try:
@@ -172,11 +178,15 @@ class GX100Panel(PluginPanel):
                                 GLib.idle_add(self._h_gear_row.set_label, h_pattern_gears[btn])
                             elif btn in seq_gears:
                                 GLib.idle_add(self._seq_gear_row.set_label, seq_gears[btn])
+                            elif btn in extra_buttons:
+                                GLib.idle_add(self._extra_btn_row.set_label, extra_buttons[btn])
                         elif event.value == 0:
                             if btn in h_pattern_gears:
                                 GLib.idle_add(self._h_gear_row.set_label, "N")
                             elif btn in seq_gears:
                                 GLib.idle_add(self._seq_gear_row.set_label, "-")
+                            elif btn in extra_buttons:
+                                GLib.idle_add(self._extra_btn_row.set_label, "-")
             except Exception:
                 break
 
