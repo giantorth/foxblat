@@ -171,7 +171,6 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
         if self._auto_apply.get_value():
             process_pattern = self._process_pattern
         self._preset_handler.set_linked_process(process_pattern)
-<<<<<<< HEAD:foxblat/widgets/preset_dialog.py
 
         # Save vehicle link if enabled and we have a vehicle
         vehicle_name = ""
@@ -182,8 +181,6 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
             else:
                 vehicle_name = self._preset_handler.get_linked_vehicle()
         self._preset_handler.set_linked_vehicle(vehicle_name)
-=======
->>>>>>> main:boxflat/widgets/preset_dialog.py
 
         self._preset_handler.set_default(self._default.get_value())
 
@@ -205,20 +202,12 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
         filter_text = entry.get_text()
 
         if len(filter_text) < 3:
-<<<<<<< HEAD:foxblat/widgets/preset_dialog.py
             group.add(FoxblatLabelRow("Enter at least three letters"))
-=======
-            group.add(BoxflatLabelRow("Enter at least three letters"))
->>>>>>> main:boxflat/widgets/preset_dialog.py
         else:
             processes = process_handler.list_processes(filter_text)
 
             if not processes:
-<<<<<<< HEAD:foxblat/widgets/preset_dialog.py
                 group.add(FoxblatLabelRow("No matching processes found"))
-=======
-                group.add(BoxflatLabelRow("No matching processes found"))
->>>>>>> main:boxflat/widgets/preset_dialog.py
             else:
                 # Sort by process name for better UX
                 processes.sort(key=lambda p: p.name.lower())
