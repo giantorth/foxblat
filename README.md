@@ -117,15 +117,11 @@ Below are some common problems and possible solutions:
 # Some more screenshots
 <img alt="Home panel" src="screens/home.png">
 
-<img alt="Wheel panel" src="screens/wheel.png">
-
-<img alt="Pedals panel" src="screens/pedals.png">
-
-<img alt="H-Pattern shifter panel" src="screens/hpattern.png">
-
-<img alt="Sequential shifter panel" src="screens/sequential.png">
+<img alt="Telemetry panel" src="screens/telemetry.png">
 
 <img alt="Presets panel" src="screens/presets.png">
+
+<img alt="GX100 Plugin panel" src="screens/plugin.png">
 
 ## Supporters
 
