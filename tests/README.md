@@ -30,16 +30,29 @@ pip install pytest
 
 ## Test Coverage
 
-- **test_process_handler.py**: Tests for the process handler, including:
-  - ProcessInfo class functionality
-  - Command-line pattern matching
-  - Process discovery and filtering
+### Plugin System & Controls
+- **test_subscription.py**: Event system (Subscription, SubscriptionList, EventDispatcher, SimpleEventDispatcher, Observable, BlockingValue)
+- **test_plugin_base.py**: Plugin infrastructure (PluginContext, PluginDeviceInfo, PluginPanel)
+- **test_plugin_manager.py**: Plugin discovery, loading, device matching, presets, and event forwarding
+- **test_widgets.py**: GTK widget wrappers (FoxblatRow, SliderRow, SwitchRow, ButtonRow, LabelRow, ToggleButtonRow, ComboRow, LevelRow)
+
+### Core Logic
+- **test_bitwise.py**: Bit manipulation utilities (test_bit, modify_bit, set_bit, unset_bit, toggle_bit, swap_nibbles)
+- **test_moza_command.py**: Serial protocol command construction, payload encoding/decoding, checksum, message framing, response parsing
+- **test_settings_handler.py**: YAML settings persistence (read, write, remove, path management)
+- **test_pithouse_converter.py**: Pithouse preset import validation, conversion, and FFB curve decoding
+- **test_preset_handler.py**: Preset save/load, linked processes/vehicles, device settings
+
+### I/O & Communication
+- **test_process_handler.py**: Process discovery, command-line pattern matching
+- **test_connection_manager.py**: Device handler resolution, serial device management, wheel ID cycling
+- **test_serial_handler.py**: Serial write queueing, shutdown lifecycle, subscription dispatching
+- **test_hid_handler.py**: HID device detection, axis values, blip data, compatibility modes
+- **test_ipc_handler.py**: JSON-RPC command processing (ping, set/get angle, status, list/load presets)
 
 ## Notes
-
-- Some tests require a Linux environment as they test Linux-specific functionality
-- Tests that require Linux will be skipped automatically when run on other platforms
-- The process observer tests need actual processes running to be fully tested
+- Tests requiring GTK/Adwaita will be skipped if the libraries are not available
+- The `FOXBLAT_FLATPAK_EDITION` environment variable is set automatically by tests that need it
 
 ## Adding New Tests
 

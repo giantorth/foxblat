@@ -1,5 +1,8 @@
 # Copyright (c) 2025, Tomasz Pakuła Using Arch BTW
 
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, GLib
 import time
 from threading import Event

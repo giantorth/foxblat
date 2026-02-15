@@ -170,7 +170,7 @@ class MozaCommand():
 
 
     def get_payload(self):
-        return self.value_from_data(self._payload, self._type)
+        return self.value_from_data(self._payload, self._type, self._length)
 
 
     @staticmethod

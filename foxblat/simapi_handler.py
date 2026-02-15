@@ -45,6 +45,7 @@ class SimData(ctypes.Structure):
     The full structure has many more fields for car data, proximity, etc.
     """
     _pack_ = 4
+    _layout_ = "ms"
     _fields_ = [
         ("mtick", ctypes.c_uint64),          # monotonic tick
 
