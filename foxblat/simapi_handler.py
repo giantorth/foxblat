@@ -1,3 +1,4 @@
+# Copyright (c) 2026, R. Orth (giantorth)
 # SimAPI integration for reading racing simulator telemetry
 
 import ctypes

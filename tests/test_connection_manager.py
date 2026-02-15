@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026, R. Orth (giantorth)
 """
 Unit tests for foxblat.connection_manager
 

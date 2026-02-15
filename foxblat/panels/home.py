@@ -115,7 +115,7 @@ class HomeSettings(SettingsPanel):
 
         dialog.set_version(self._version)
         dialog.set_developer_name("GiantOrth")
-        dialog.set_copyright("Boxflat is © Tomasz Pakula of Using Arch BTW\nAll rights reserved")
+        dialog.set_copyright("Foxblat is a fork of Boxflat, © Tomasz Pakula of Using Arch BTW\nAll rights reserved")
         dialog.set_license_type(Gtk.License.GPL_3_0)
 
         dialog.set_issue_url(

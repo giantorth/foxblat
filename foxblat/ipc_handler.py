@@ -1,4 +1,4 @@
-# Copyright (c) 2025, Ryan Orth Using CachyOS BTW
+# Copyright (c) 2026, R. Orth (giantorth)
 # IPC handler for external program control
 
 import socket

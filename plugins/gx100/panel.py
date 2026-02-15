@@ -1,3 +1,4 @@
+# Copyright (c) 2026, R. Orth (giantorth)
 # GX-100 Shifter Plugin for Foxblat
 # Based on GX-100.html Chrome WebHID configuration page
 

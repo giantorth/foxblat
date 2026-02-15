@@ -1,3 +1,5 @@
+# Copyright (c) 2026, R. Orth (giantorth)
+
 from abc import abstractmethod
 from foxblat.panels.settings_panel import SettingsPanel
 from typing import TYPE_CHECKING
