@@ -126,9 +126,7 @@ class OtherSettings(SettingsPanel):
         self._value.set_title("Value")
 
         commands_url = self._version.removesuffix("-flatpak")
-        #commands_url = "https://raw.githubusercontent.com/Lawstorant/foxblat/refs/heads/main/data/serial.yml"
-        commands_url = f"https://raw.githubusercontent.com/Lawstorant/foxblat/refs/tags/{commands_url}/data/serial.yml"
-        #commands_url = f"https://github.com/Lawstorant/foxblat/blob/{commands_url}/data/serial.yml"
+        commands_url = f"https://raw.githubusercontent.com/giantorth/foxblat/refs/tags/{commands_url}/data/serial.yml"
 
         read = FoxblatButtonRow("Execute command")
         read.add_button("Read", self._read_custom)

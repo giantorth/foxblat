@@ -108,32 +108,33 @@ class HomeSettings(SettingsPanel):
 
 
     def _show_about_dialog(self, *_):
-        dialog = Adw.AboutDialog()
+        dialog = Adw.AboutWindow()
 
         dialog.set_application_name("Foxblat")
         dialog.set_application_icon("io.github.giantorth.foxblat")
 
         dialog.set_version(self._version)
-        dialog.set_developer_name("Tomasz Pakuła")
-        dialog.set_copyright("© 2025 Using Arch BTW\nAll rights reserved")
+        dialog.set_developer_name("GiantOrth")
+        dialog.set_copyright("Boxflat is © Tomasz Pakula of Using Arch BTW\nAll rights reserved")
         dialog.set_license_type(Gtk.License.GPL_3_0)
 
         dialog.set_issue_url(
-            f"https://github.com/Lawstorant/foxblat/issues/new?assignees=lawstorant&labels=bug%2C+triage&projects=&template=bug_report.md&title=[{self._version}]"
+            f"https://github.com/giantorth/foxblat/issues/new?assignees=giantorth&labels=bug%2C+triage&projects=&template=bug_report.md&title=[{self._version}]"
         )
 
-        dialog.set_website("https://github.com/Lawstorant/foxblat")
+        dialog.set_website("https://github.com/giantorth/foxblat")
         dialog.add_link("FFB Driver", "https://github.com/JacKeTUs/universal-pidff")
         dialog.add_link(
             "Flatpak udev rule",
-            "https://github.com/Lawstorant/foxblat?tab=readme-ov-file#udev-rule-installation-for-flatpak"
+            "https://github.com/giantorth/foxblat?tab=readme-ov-file#udev-rule-installation-for-flatpak"
         )
         dialog.add_link(
             "Request a feature",
-            "https://github.com/Lawstorant/foxblat/issues/new?assignees=lawstorant&labels=feature&projects=&template=feature_request.md"
+            "https://github.com/giantorth/foxblat/issues/new?assignees=giantorth&labels=feature&projects=&template=feature_request.md"
         )
 
         dialog.set_comments("Moza Racing software suite")
         # dialog.set_debug_info("")
 
-        dialog.present(self._content)
+        dialog.set_transient_for(self._content.get_root())
+        dialog.present()

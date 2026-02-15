@@ -102,7 +102,7 @@ class MainWindow(Adw.ApplicationWindow):
             Thread(target=self._install_rules, args=[is_flatpak], daemon=True).start()
 
         elif response == "guide":
-            url = "https://github.com/Lawstorant/foxblat?tab=readme-ov-file#udev-rule-installation-for-flatpak"
+            url = "https://github.com/giantorth/foxblat?tab=readme-ov-file#udev-rule-installation-for-flatpak"
             Gtk.UriLauncher(uri=url).launch()
             self._settings.write_setting(2, "rules-version")
 
