@@ -9,7 +9,7 @@ from foxblat.preset_handler import MozaPresetHandler
 from foxblat.pithouse_converter import PithouseConverter
 from foxblat.settings_handler import SettingsHandler
 import os
-from threading import Thread
+from threading import Thread, Event
 from time import sleep
 
 from gi.repository import Gtk, Gio, GLib
@@ -43,8 +43,12 @@ class PresetSettings(SettingsPanel):
         if self._plugin_manager:
             self._plugin_manager.subscribe("plugin-panel-available", self._on_plugin_available)
 
+        self._default_preset_loaded = Event()
         if self._settings.read_setting("default-preset-on-startup"):
-            Thread(target=self._load_default, args=[5], daemon=True).start()
+            self._cm.subscribe("device-connected", self._on_device_connected_for_default)
+
+        self._wheel_connected_for_preset = False
+        self._cm.subscribe_connected("wheel-rpm-value1", self._on_wheel_state_for_preset)
 
 
     def prepare_ui(self):
@@ -189,8 +193,8 @@ class PresetSettings(SettingsPanel):
         pm.set_path(self._presets_path)
         pm.set_name(self._name_row.get_text())
 
-        pm.subscribe(self.list_presets)
-        pm.subscribe(self._activate_save)
+        pm.subscribe(lambda *_: GLib.idle_add(self.list_presets))
+        pm.subscribe(lambda *_: GLib.idle_add(self._activate_save))
 
         for key, method in self._includes.items():
             if method():
@@ -391,6 +395,29 @@ class PresetSettings(SettingsPanel):
         dialog.subscribe("save", self._handle_preset_save)
         dialog.subscribe("delete", self._delete_preset)
         dialog.present(self._content)
+
+
+    def _on_device_connected_for_default(self, device_name: str) -> None:
+        if device_name != "base":
+            return
+        if self._default_preset_loaded.is_set():
+            return
+        self._default_preset_loaded.set()
+        Thread(target=self._load_default, args=[2], daemon=True).start()
+
+
+    def _on_wheel_state_for_preset(self, value: int) -> None:
+        connected = value > -1
+        if connected == self._wheel_connected_for_preset:
+            return
+        self._wheel_connected_for_preset = connected
+        if not connected:
+            return
+
+        current_preset = self._name_row.get_text()
+        if current_preset:
+            print(f"Wheel connected, re-applying preset: {current_preset}")
+            Thread(target=self._load_preset, args=[current_preset], daemon=True).start()
 
 
     def _load_default(self, delay: int=0) -> None:

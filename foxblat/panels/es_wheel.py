@@ -73,7 +73,6 @@ class OldWheelSettings(SettingsPanel):
         #self._timings.append([80, 83, 86, 89, 91, 92, 93, 94, 96, 97]) # Outside-in
 
         self._timings2: list[list[int]] = [
-            [2000, 3800, 5600, 7400, 9200, 11000, 12800, 14600, 16400, 18000],
             [5400, 5700, 6000, 6300, 6500, 6700, 6900, 7100, 7300, 7600],
             [6300, 6600, 6800, 7100, 7300, 7300, 7400, 7500, 7700, 7800],
             [6700, 6900, 7200, 7400, 7600, 7700, 7800, 7800, 8000, 8100]
@@ -242,7 +241,7 @@ class OldWheelSettings(SettingsPanel):
             range_start=2000, range_end=18_000, button_row=False, draw_marks=False, increment=100)
 
         self._add_row(self._timing_row2)
-        self._timing_row2.add_buttons("Linear", "Early", "Normal", "Late")
+        self._timing_row2.add_buttons("Early", "Normal", "Late")
         self._timing_row2.subscribe(self._set_rpm_timings2_preset)
         self._timing_row2.set_present(0)
 
@@ -264,6 +263,7 @@ class OldWheelSettings(SettingsPanel):
         self._cm.subscribe("wheel-rpm-interval", self._current_row.set_value)
 
         self.add_preferences_group("RPM Colors")
+        self._current_group.set_description("Colors are fixed on ES wheel")
         self._add_row(FoxblatNewColorPickerRow())
         for i in range(MOZA_RPM_LEDS):
             self._current_row.subscribe(f"color{i}", self._cm.set_setting, f"wheel-old-rpm-color{i+1}")
