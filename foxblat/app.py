@@ -159,6 +159,7 @@ class MyApp(Adw.Application):
         self._cm.subscribe("hid-device-connected", self._hid_handler.add_device)
         self._cm.subscribe("hid-device-disconnected", self._hid_handler.remove_device)
         self._simapi_handler.set_connection_manager(self._cm)
+        self._simapi_handler.subscribe_to_wheel_settings()
 
         self._plugin_manager = PluginManager(config_path, self._hid_handler, self._settings)
 

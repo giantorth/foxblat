@@ -212,6 +212,11 @@ class SimApiHandler(EventDispatcher):
         self._debug = True  # Enable debug output
         self._debug_ui_enabled = False  # UI debug view toggle
 
+        # Cached wheel settings (populated via CM subscriptions)
+        self._wheel_colors = [None] * 10  # [R,G,B] per LED from device
+        self._es_thresholds = None  # Percent thresholds from wheel-rpm-timings
+        self._es_blink_interval_ms = None  # Blink interval from wheel-rpm-interval
+
         # Register events
         self._register_events(
             "rpm-percent",
@@ -302,6 +307,11 @@ class SimApiHandler(EventDispatcher):
         self._wheel_old_protocol = old_protocol
         self._wheel_colors_sent = False  # Reset colors flag when switching protocols
 
+        if old_protocol and self._es_thresholds:
+            self.set_thresholds(self._es_thresholds)
+        elif not old_protocol:
+            self._thresholds = DEFAULT_THRESHOLDS.copy()
+
     def set_auto_enable(self, enabled: bool) -> None:
         """Enable/disable auto-start when sim is detected."""
         self._auto_enable = enabled
@@ -313,6 +323,51 @@ class SimApiHandler(EventDispatcher):
     def is_debug_ui_enabled(self) -> bool:
         """Check if debug UI data dispatching is enabled."""
         return self._debug_ui_enabled
+
+    def subscribe_to_wheel_settings(self) -> None:
+        """Subscribe to wheel LED color and timing settings via ConnectionManager.
+
+        Allows telemetry to use user-configured colors and thresholds
+        instead of hardcoded defaults.
+        """
+        if not self._connection_manager:
+            return
+
+        for i in range(10):
+            self._connection_manager.subscribe(
+                f"wheel-rpm-color{i+1}",
+                self._on_wheel_color_update, i
+            )
+
+        self._connection_manager.subscribe(
+            "wheel-rpm-timings",
+            self._on_es_timings_update
+        )
+
+        self._connection_manager.subscribe(
+            "wheel-rpm-interval",
+            self._on_es_blink_interval_update
+        )
+
+    def _on_wheel_color_update(self, color_value, index: int) -> None:
+        """Cache a wheel LED color when it arrives from the device."""
+        if isinstance(color_value, (list, tuple)) and len(color_value) == 3:
+            self._wheel_colors[index] = list(color_value)
+            self._wheel_colors_sent = False
+
+    def _on_es_timings_update(self, timings) -> None:
+        """Cache ES wheel RPM timing thresholds from the device."""
+        if isinstance(timings, (list, tuple)) and len(timings) == 10:
+            self._es_thresholds = list(timings)
+            if self._wheel_old_protocol:
+                self.set_thresholds(self._es_thresholds)
+
+    def _on_es_blink_interval_update(self, interval_ms) -> None:
+        """Cache ES wheel blink interval and convert to frame count."""
+        if isinstance(interval_ms, (int, float)) and interval_ms > 0:
+            self._es_blink_interval_ms = int(interval_ms)
+            frames_per_toggle = max(1, int((interval_ms / 1000.0) * self._poll_rate / 2))
+            self._blink_interval = frames_per_toggle
 
     def reset_calibration(self) -> None:
         """Reset the auto-calibrated max RPM."""
@@ -813,7 +868,7 @@ class SimApiHandler(EventDispatcher):
             return
 
         # Default colors: green (1-3), red (4-7), blue (8-10)
-        colors = [
+        default_colors = [
             [0, 255, 0],    # LED 1 - green
             [0, 255, 0],    # LED 2 - green
             [0, 255, 0],    # LED 3 - green
@@ -827,10 +882,11 @@ class SimApiHandler(EventDispatcher):
         ]
 
         # Build the color data array: [index, R, G, B, index, R, G, B, ...]
+        # Use cached colors from device where available, fall back to defaults
         color_data = []
-        for i, color in enumerate(colors):
+        for i, default in enumerate(default_colors):
             color_data.append(i)
-            color_data.extend(color)
+            color_data.extend(self._wheel_colors[i] or default)
 
         # Send in two chunks of 20 bytes each (5 LEDs per chunk)
         self._connection_manager.set_setting(color_data[:20], "wheel-telemetry-rpm-colors")

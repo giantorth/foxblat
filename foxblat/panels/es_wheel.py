@@ -65,13 +65,15 @@ class OldWheelSettings(SettingsPanel):
         self._wheel_combination_data: list[int] = []
 
         self._timings: list[list[int]] = [
-            [65, 69, 72, 75, 78, 80, 83, 85, 88, 91], # Early
-            [75, 79, 82, 85, 87, 88, 89, 90, 92, 94], # Normal
-            [80, 83, 86, 89, 91, 92, 93, 94, 96, 97], # Late
+            [10, 20, 30, 40, 50, 60, 70, 80, 90, 99],  # Linear
+            [65, 69, 72, 75, 78, 80, 83, 85, 88, 91],  # Early
+            [75, 79, 82, 85, 87, 88, 89, 90, 92, 94],  # Normal
+            [80, 83, 86, 89, 91, 92, 93, 94, 96, 97],  # Late
         ]
         #self._timings.append([80, 83, 86, 89, 91, 92, 93, 94, 96, 97]) # Outside-in
 
         self._timings2: list[list[int]] = [
+            [2000, 3800, 5600, 7400, 9200, 11000, 12800, 14600, 16400, 18000],
             [5400, 5700, 6000, 6300, 6500, 6700, 6900, 7100, 7300, 7600],
             [6300, 6600, 6800, 7100, 7300, 7300, 7400, 7500, 7700, 7800],
             [6700, 6900, 7200, 7400, 7600, 7700, 7800, 7800, 8000, 8100]
@@ -229,8 +231,7 @@ class OldWheelSettings(SettingsPanel):
             button_row=False, draw_marks=False)
 
         self._add_row(self._timing_row)
-        self._timing_row.add_buttons("Early", "Normal", "Late")
-        # self._timing_row.add_buttons("Center")
+        self._timing_row.add_buttons("Linear", "Early", "Normal", "Late")
         self._timing_row.subscribe(self._set_rpm_timings_preset)
         self._timing_row.subscribe_sliders(self._set_rpm_timings)
         for i in range(MOZA_RPM_LEDS):
@@ -241,7 +242,7 @@ class OldWheelSettings(SettingsPanel):
             range_start=2000, range_end=18_000, button_row=False, draw_marks=False, increment=100)
 
         self._add_row(self._timing_row2)
-        self._timing_row2.add_buttons("Early", "Normal", "Late")
+        self._timing_row2.add_buttons("Linear", "Early", "Normal", "Late")
         self._timing_row2.subscribe(self._set_rpm_timings2_preset)
         self._timing_row2.set_present(0)
 

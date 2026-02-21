@@ -11,10 +11,10 @@ from gi.repository import GLib
 
 class TelemetrySettings(SettingsPanel):
     """
-    Panel for configuring SimAPI telemetry integration.
-    Allows users to enable/disable telemetry feed to dashboard and wheel,
-    and monitor connection status. RPM thresholds are configured in the
-    respective Wheel/Dashboard panels.
+    Panel for monitoring SimAPI telemetry integration.
+    Auto-enables telemetry output when devices are detected.
+    LED colors and RPM thresholds are configured in the respective
+    Wheel/Dashboard panels.
     """
 
     def __init__(self, button_callback, connection_manager: MozaConnectionManager,
@@ -28,9 +28,6 @@ class TelemetrySettings(SettingsPanel):
         self._car_label = None
         self._rpm_level = None
         self._gear_label = None
-        self._dash_switch = None
-        self._wheel_switch = None
-        self._wheel_old_switch = None
         self._poll_rate_slider = None
         self._debug_switch = None
 
@@ -48,7 +45,8 @@ class TelemetrySettings(SettingsPanel):
         self._simapi.subscribe("car-name", self._on_car_name)
         self._simapi.subscribe("debug-data", self._on_debug_data)
 
-        # Auto-detect wheel type based on which wheel responds
+        # Auto-detect devices and enable telemetry output
+        self._cm.subscribe_connected("dash-rpm-indicator-mode", self._on_dash_detected)
         self._cm.subscribe_connected("wheel-telemetry-mode", self._on_new_wheel_detected)
         self._cm.subscribe_connected("wheel-rpm-value1", self._on_old_wheel_detected)
 
@@ -95,21 +93,6 @@ class TelemetrySettings(SettingsPanel):
 
         # Settings page
         self.add_preferences_page("Settings")
-        self.add_preferences_group("Telemetry Output")
-        self._current_group.set_description("Enable telemetry output to your Moza devices")
-
-        self._dash_switch = FoxblatSwitchRow("Dashboard RPM LEDs", "Send telemetry to dashboard")
-        self._add_row(self._dash_switch)
-        self._dash_switch.subscribe(self._on_dash_toggle)
-
-        self._wheel_switch = FoxblatSwitchRow("Wheel RPM LEDs", "Send telemetry to wheel")
-        self._add_row(self._wheel_switch)
-        self._wheel_switch.subscribe(self._on_wheel_toggle)
-
-        self._wheel_old_switch = FoxblatSwitchRow("ES Wheel (Old Protocol)", "Enable for ES wheel compatibility")
-        self._add_row(self._wheel_old_switch)
-        self._wheel_old_switch.subscribe(self._on_wheel_old_toggle)
-
         self.add_preferences_group("Performance")
         self._poll_rate_slider = FoxblatSliderRow("Update Rate", range_start=30, range_end=120,
                                                    subtitle="Updates per second", suffix=" Hz")
@@ -252,24 +235,6 @@ class TelemetrySettings(SettingsPanel):
 
     def _load_settings(self):
         """Load saved settings from config file."""
-        # Load dash enabled
-        dash_enabled = self._settings.read_setting("telemetry-dash-enabled")
-        if dash_enabled is not None:
-            self._dash_switch.set_value(dash_enabled)
-            self._simapi.set_dash_enabled(bool(dash_enabled))
-
-        # Load wheel old protocol (must be before wheel enabled)
-        wheel_old = self._settings.read_setting("telemetry-wheel-old-protocol")
-        if wheel_old is not None:
-            self._wheel_old_switch.set_value(wheel_old)
-            self._simapi.set_wheel_old_protocol(bool(wheel_old))
-
-        # Load wheel enabled
-        wheel_enabled = self._settings.read_setting("telemetry-wheel-enabled")
-        if wheel_enabled is not None:
-            self._wheel_switch.set_value(wheel_enabled)
-            self._simapi.set_wheel_enabled(bool(wheel_enabled))
-
         # Load poll rate
         poll_rate = self._settings.read_setting("telemetry-poll-rate")
         if poll_rate is not None:
@@ -341,58 +306,22 @@ class TelemetrySettings(SettingsPanel):
         self._simapi.reset_calibration()
         self.show_toast("RPM calibration reset - rev to max RPM to recalibrate")
 
-    def _on_dash_toggle(self, value: int):
-        """Handle dashboard telemetry toggle."""
-        enabled = bool(value)
-        self._simapi.set_dash_enabled(enabled)
-        self._settings.write_setting(value, "telemetry-dash-enabled")
-
-        # Set dash to telemetry mode when enabled
-        if enabled and self._cm:
-            self._cm.set_setting(1, "dash-rpm-indicator-mode")
-
-    def _on_wheel_toggle(self, value: int):
-        """Handle wheel telemetry toggle."""
-        enabled = bool(value)
-        self._simapi.set_wheel_enabled(enabled)
-        self._settings.write_setting(value, "telemetry-wheel-enabled")
-
-        # Set wheel to appropriate mode when enabled
-        if enabled and self._cm:
-            old_protocol = self._wheel_old_switch.get_value() if self._wheel_old_switch else False
-            if old_protocol:
-                # ES wheel uses rpm-indicator-mode
-                self._cm.set_setting(1, "wheel-rpm-indicator-mode")
-            else:
-                # New wheels use telemetry-mode
-                self._cm.set_setting(1, "wheel-telemetry-mode")
-
-    def _on_wheel_old_toggle(self, value: int):
-        """Handle old wheel protocol toggle."""
-        old_protocol = bool(value)
-        self._simapi.set_wheel_old_protocol(old_protocol)
-        self._settings.write_setting(value, "telemetry-wheel-old-protocol")
-
-        # If wheel is currently enabled, update the mode setting
-        if self._wheel_switch and self._wheel_switch.get_value() and self._cm:
-            if old_protocol:
-                self._cm.set_setting(1, "wheel-rpm-indicator-mode")
-            else:
-                self._cm.set_setting(1, "wheel-telemetry-mode")
+    def _on_dash_detected(self, value: int):
+        """Auto-enable dash telemetry when dashboard is detected."""
+        if value >= 0:
+            self._simapi.set_dash_enabled(True)
 
     def _on_new_wheel_detected(self, value: int):
-        """Auto-detect new wheel protocol when wheel-telemetry-mode responds."""
-        if value >= 0:  # Valid response means new wheel detected
+        """Auto-enable wheel telemetry when new wheel is detected."""
+        if value >= 0:
             self._simapi.set_wheel_old_protocol(False)
-            if self._wheel_old_switch:
-                GLib.idle_add(self._wheel_old_switch.set_value, 0)
+            self._simapi.set_wheel_enabled(True)
 
     def _on_old_wheel_detected(self, value: int):
-        """Auto-detect old wheel protocol (ES wheel) when wheel-rpm-value1 responds."""
-        if value >= 0:  # Valid response means old wheel detected
+        """Auto-enable wheel telemetry when ES wheel is detected."""
+        if value >= 0:
             self._simapi.set_wheel_old_protocol(True)
-            if self._wheel_old_switch:
-                GLib.idle_add(self._wheel_old_switch.set_value, 1)
+            self._simapi.set_wheel_enabled(True)
 
     def _on_poll_rate_change(self, value: int):
         """Handle poll rate change."""
