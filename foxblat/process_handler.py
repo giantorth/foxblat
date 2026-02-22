@@ -346,4 +346,3 @@ class ProcessObserver(EventDispatcher):
         self._vehicle_presets.clear()
         self._process_only_presets.clear()
         self._steam_games.clear()
-        self._vehicle_preset_active = False

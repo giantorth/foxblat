@@ -37,8 +37,16 @@ class PresetSettings(SettingsPanel):
         self._default_preset = None
         self._include_expander = None  # Store expander for adding plugin switches
         self._current_preset_name = ""  # Track active preset for list highlighting
+        self._current_vehicle_name = ""  # Track current vehicle for clone button
+        if simapi_handler:
+            current_car = simapi_handler.get_current_car_name()
+            if current_car and current_car not in ("None", "Unknown"):
+                self._current_vehicle_name = current_car
         super().__init__("Presets", button_callback, connection_manager)
         self.list_presets()
+
+        if self._simapi:
+            self._simapi.subscribe("car-name", self._on_car_name_for_clone)
 
         # Subscribe to plugin panel availability for dynamic switch addition
         if self._plugin_manager:
@@ -252,6 +260,47 @@ class PresetSettings(SettingsPanel):
         GLib.idle_add(self._add_single_plugin_switch, device_name, panel)
 
 
+    def _on_car_name_for_clone(self, car_name: str) -> None:
+        new_name = car_name if car_name not in ("None", "Unknown", "") else ""
+        if new_name == self._current_vehicle_name:
+            return
+        self._current_vehicle_name = new_name
+        GLib.idle_add(self.list_presets)
+
+
+    def _clone_preset_for_vehicle(self, *args) -> None:
+        if not self._current_preset_name or not self._current_vehicle_name:
+            return
+
+        pm = MozaPresetHandler(None)
+        pm.set_path(self._presets_path)
+        pm.set_name(self._current_preset_name)
+
+        steam_name = pm.get_linked_steam_name()
+        process = pm.get_linked_process()
+
+        if steam_name:
+            game_title = steam_name
+        elif process:
+            game_title = os.path.basename(process.split()[0].replace("\\", "/")) or process
+        else:
+            return
+
+        vehicle = self._current_vehicle_name
+        new_name = f"{game_title}: {vehicle}"
+
+        pm.copy_preset(new_name)
+
+        new_pm = MozaPresetHandler(None)
+        new_pm.set_path(self._presets_path)
+        new_pm.set_name(new_name)
+        new_pm.set_linked_vehicle(vehicle)
+
+        self.show_toast(f"Created preset \"{new_name}\"", 2)
+        GLib.idle_add(self.list_presets)
+        Thread(target=self._load_preset, args=[new_name], daemon=True).start()
+
+
     def _load_preset(self, preset_name: str, automatic=False, default=False):
         preset_name = preset_name.removesuffix(".yml")
         print(f"Loading preset \"{preset_name}\"")
@@ -372,6 +421,7 @@ class PresetSettings(SettingsPanel):
                     combo_key = f"{event_key}|{vehicle}"
                     self._observer.subscribe(combo_key, self._load_preset, preset_name, True)
                 else:
+                    self._observer.register_process_only_preset(event_key)
                     self._observer.subscribe(event_key, self._load_preset, preset_name, True)
             elif process:
                 if vehicle:
@@ -408,6 +458,13 @@ class PresetSettings(SettingsPanel):
         def _render_named_group(group_key):
             self.add_preferences_group(group_titles.get(group_key, group_key))
             self._presets_groups.append(self._current_group)
+            if group_key == active_group_key and self._current_vehicle_name:
+                btn = Gtk.Button(label=self._current_vehicle_name)
+                btn.add_css_class("flat")
+                btn.set_icon_name("list-add-symbolic")
+                btn.set_tooltip_text(f"Save current preset for {self._current_vehicle_name}")
+                btn.connect("clicked", self._clone_preset_for_vehicle)
+                self._current_group.set_header_suffix(btn)
             if self._default_preset:
                 for _, pname, _ in groups[group_key]:
                     if pname == self._default_preset:
