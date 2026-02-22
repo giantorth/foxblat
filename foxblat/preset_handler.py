@@ -360,6 +360,42 @@ class MozaPresetHandler(SimpleEventDispatcher):
         self._set_preset_data(data)
 
 
+    def get_linked_steam_appid(self) -> str:
+        data = self._get_preset_data()
+
+        if data is None:
+            return ""
+
+        if "linked-steam-appid" not in data:
+            return ""
+
+        return str(data["linked-steam-appid"])
+
+
+    def set_linked_steam_appid(self, appid: str):
+        data = self._get_preset_data() or {}
+        data["linked-steam-appid"] = appid
+        self._set_preset_data(data)
+
+
+    def get_linked_steam_name(self) -> str:
+        data = self._get_preset_data()
+
+        if data is None:
+            return ""
+
+        if "linked-steam-name" not in data:
+            return ""
+
+        return data["linked-steam-name"]
+
+
+    def set_linked_steam_name(self, name: str):
+        data = self._get_preset_data() or {}
+        data["linked-steam-name"] = name
+        self._set_preset_data(data)
+
+
     def is_default(self) -> bool:
         data = self._get_preset_data()
 

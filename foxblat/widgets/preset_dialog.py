@@ -9,8 +9,22 @@ from .label_row import FoxblatLabelRow
 
 from foxblat.subscription import EventDispatcher
 from foxblat import process_handler
+from foxblat import steam_handler
 from foxblat.preset_handler import MozaPresetHandler
-from os import environ
+from os import environ, path
+
+def _process_display_name(cmdline: str) -> str:
+    """Return just the executable filename from a full command line pattern."""
+    if not cmdline:
+        return ""
+    exe = cmdline.split()[0].replace("\\", "/")
+    return path.basename(exe) or cmdline
+
+
+# Combo row indices
+_LINK_MODE_STEAM = 0
+_LINK_MODE_PROCESS = 1
+
 
 class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
     def __init__(self, presets_path: str, file_name: str, simapi_handler=None):
@@ -32,29 +46,61 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
         self.set_title("Preset settings")
         self.set_content_width(480)
 
-        # Create UI
+        # Stored link values
+        self._process_pattern = self._preset_handler.get_linked_process()
+        self._steam_appid = self._preset_handler.get_linked_steam_appid()
+        self._steam_name = self._preset_handler.get_linked_steam_name()
+
+        # has_link reflects only what was explicitly saved — must be read before auto-select
+        has_link = bool(self._process_pattern or self._steam_appid)
+
+        # Determine initial link mode from saved data.
+        # Default to Steam unless there is an explicit process link (and no Steam link).
+        initial_mode = _LINK_MODE_PROCESS if (self._process_pattern and not self._steam_appid) else _LINK_MODE_STEAM
+
+        # --- Name row ---
         self._name_row = Adw.EntryRow(title="Preset name")
         self._name_row.set_text(preset_name)
 
-        process_name = self._preset_handler.get_linked_process()
-        self._process_pattern = process_name
+        # --- Auto apply toggle ---
         self._auto_apply = FoxblatSwitchRow("Apply automatically")
-        self._auto_apply.set_subtitle("Apply when selected process is running")
+        self._auto_apply.set_subtitle("Apply when the selected game or process is running")
 
-        self._auto_apply_name = FoxblatLabelRow("Proccess")
+        # --- Link mode selector (Steam game vs custom process) ---
+        self._link_mode_combo = Adw.ComboRow()
+        self._link_mode_combo.set_title("Link type")
+        link_model = Gtk.StringList.new(["Steam game", "Custom process"])
+        self._link_mode_combo.set_model(link_model)
+        self._link_mode_combo.set_selected(initial_mode)
+        self._link_mode_combo.set_sensitive(False)
+        self._auto_apply.subscribe(self._link_mode_combo.set_sensitive)
+
+        # --- Steam game section ---
+        steam_display = self._steam_name if self._steam_name else "No Steam game linked"
+        self._steam_name_row = FoxblatLabelRow("Game")
+        self._steam_name_row.set_wrap(True)
+        self._steam_name_row.set_label(steam_display)
+
+        self._steam_select_row = FoxblatAdvanceRow("Select running Steam game")
+        self._steam_select_row.subscribe(self._open_steam_page)
+
+        # --- Process section ---
+        self._auto_apply_name = FoxblatLabelRow("Process")
         self._auto_apply_name.set_wrap(True)
-        self._auto_apply_name.set_label(process_name)
-        self._auto_apply_name.set_active(False)
-        self._auto_apply.subscribe(self._auto_apply_name.set_active)
+        self._auto_apply_name.set_label(_process_display_name(self._process_pattern))
 
         self._auto_apply_select = FoxblatAdvanceRow("Select running process")
-        self._auto_apply_select.set_active(False)
         self._auto_apply_select.subscribe(self._open_process_page)
-        self._auto_apply.subscribe(self._auto_apply_select.set_active)
 
-        self._auto_apply.set_value(len(process_name) > 0, mute=False)
+        # Connect link mode changes to show/hide Steam vs process rows
+        self._link_mode_combo.connect("notify::selected", self._on_link_mode_changed)
+        self._auto_apply.subscribe(self._on_auto_apply_changed)
 
-        # Vehicle linking UI
+        # Apply initial visibility — hide both sections when auto-apply is off
+        self._update_link_mode_visibility(initial_mode if has_link else -1)
+        self._auto_apply.set_value(has_link, mute=False)
+
+        # --- Vehicle linking ---
         linked_vehicle = self._preset_handler.get_linked_vehicle()
         self._link_vehicle = FoxblatSwitchRow("Link to current vehicle")
         self._link_vehicle.set_subtitle("Apply only when driving this car")
@@ -69,25 +115,28 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
 
         self._link_vehicle.set_value(len(linked_vehicle) > 0, mute=False)
 
-        # Subscribe to SimAPI for current vehicle updates
         if simapi_handler:
             simapi_handler.subscribe("car-name", self._on_vehicle_update)
-            # Get current vehicle if already detected
             current_car = simapi_handler.get_current_car_name()
             if current_car:
                 self._on_vehicle_update(current_car)
 
+        # --- Default preset toggle ---
         self._default = FoxblatSwitchRow("Default preset", "Activate if no other automatic preset applies")
         self._default.set_value(self._preset_handler.is_default())
 
-        # Place rows in logical order
+        # --- Build page layout ---
         page = Adw.PreferencesPage()
+
         group = Adw.PreferencesGroup(margin_start=10, margin_end=10)
         group.add(self._name_row)
         page.add(group)
 
         group = Adw.PreferencesGroup(margin_start=10, margin_end=10)
         group.add(self._auto_apply)
+        group.add(self._link_mode_combo)
+        group.add(self._steam_name_row)
+        group.add(self._steam_select_row)
         group.add(self._auto_apply_name)
         group.add(self._auto_apply_select)
         group.add(self._link_vehicle)
@@ -98,22 +147,18 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
         group.add(self._default)
         page.add(group)
 
-        # Finally, add all things together
         nav = Adw.NavigationView()
         self.set_child(nav)
         self._navigation = nav
 
         toolbar_view = Adw.ToolbarView()
-        nav.add(Adw.NavigationPage(title=f"Preset settings", child=toolbar_view))
-
+        nav.add(Adw.NavigationPage(title="Preset settings", child=toolbar_view))
         toolbar_view.add_top_bar(Adw.HeaderBar())
         toolbar_view.set_content(page)
 
-        self._read_preset_data(presets_path, file_name)
-
         self._save_row = None
         self._delete_row = None
-        # Decide which button style to use
+
         if Adw.get_minor_version() >= 6:
             self._save_row = Adw.ButtonRow(title="Save")
             self._save_row.add_css_class("suggested-action")
@@ -134,8 +179,6 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
             group.add(self._save_row)
             page.add(group)
 
-
-        # compatibility with libadwaita older than 1.6
         else:
             self._save_row = Gtk.Button(label="Save", hexpand=True)
             self._save_row.add_css_class("suggested-action")
@@ -152,17 +195,47 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
             box.append(self._delete_row)
             box.append(self._save_row)
             box.add_css_class("linked")
-
             self.get_child().add_bottom_bar(box)
 
 
-    def _read_preset_data(self, presets_path: str, file_name: str):
-        print(f"Reading preset data from \"{file_name}\"")
-        # self.set_title(preset_name)
+    def _on_auto_apply_changed(self, value) -> None:
+        active = bool(value)
+        mode = self._link_mode_combo.get_selected()
+        self._update_link_mode_visibility(mode if active else -1)
+        if active and mode == _LINK_MODE_STEAM:
+            self._try_auto_select_steam()
+
+
+    def _on_link_mode_changed(self, combo, *args) -> None:
+        if not self._auto_apply.get_value():
+            return
+        self._update_link_mode_visibility(combo.get_selected())
+        if combo.get_selected() == _LINK_MODE_STEAM:
+            self._try_auto_select_steam()
+
+
+    def _try_auto_select_steam(self) -> None:
+        """Auto-select the only running Steam game if none is linked yet."""
+        if self._steam_appid:
+            return
+        running = steam_handler.detect_running_steam_games()
+        if len(running) == 1:
+            self._steam_appid = running[0].app_id
+            self._steam_name = running[0].name
+            self._steam_name_row.set_label(running[0].name)
+
+
+    def _update_link_mode_visibility(self, mode: int) -> None:
+        steam_visible = mode == _LINK_MODE_STEAM
+        process_visible = mode == _LINK_MODE_PROCESS
+
+        self._steam_name_row.set_visible(steam_visible)
+        self._steam_select_row.set_visible(steam_visible)
+        self._auto_apply_name.set_visible(process_visible)
+        self._auto_apply_select.set_visible(process_visible)
 
 
     def _on_vehicle_update(self, vehicle_name: str):
-        """Update UI when SimAPI reports current vehicle."""
         self._current_vehicle_from_simapi = vehicle_name
         if vehicle_name:
             GLib.idle_add(self._vehicle_name_row.set_label, vehicle_name)
@@ -171,15 +244,27 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
     def _notify_save(self, *rest):
         self.close()
 
-        process_pattern = ""
-        if self._auto_apply.get_value():
-            process_pattern = self._process_pattern
-        self._preset_handler.set_linked_process(process_pattern)
+        mode = self._link_mode_combo.get_selected()
+
+        if self._auto_apply.get_value() and mode == _LINK_MODE_STEAM:
+            # Save Steam link, clear process link
+            self._preset_handler.set_linked_steam_appid(self._steam_appid)
+            self._preset_handler.set_linked_steam_name(self._steam_name)
+            self._preset_handler.set_linked_process("")
+        elif self._auto_apply.get_value() and mode == _LINK_MODE_PROCESS:
+            # Save process link, clear Steam link
+            self._preset_handler.set_linked_process(self._process_pattern)
+            self._preset_handler.set_linked_steam_appid("")
+            self._preset_handler.set_linked_steam_name("")
+        else:
+            # Auto-apply disabled — clear everything
+            self._preset_handler.set_linked_process("")
+            self._preset_handler.set_linked_steam_appid("")
+            self._preset_handler.set_linked_steam_name("")
 
         # Save vehicle link if enabled and we have a vehicle
         vehicle_name = ""
         if self._auto_apply.get_value() and self._link_vehicle.get_value():
-            # Use current vehicle from SimAPI if available, otherwise keep existing
             if self._current_vehicle_from_simapi:
                 vehicle_name = self._current_vehicle_from_simapi
             else:
@@ -201,6 +286,49 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
         self._dispatch("delete", self._preset_name)
 
 
+    # ------------------------------------------------------------------ Steam game page
+
+    def _open_steam_page(self, *rest):
+        running = steam_handler.detect_running_steam_games()
+
+        # Auto-select when exactly one game is running — no need to show the picker
+        if len(running) == 1:
+            self._select_steam_game(running[0], navigate_back=False)
+            return
+
+        group = Adw.PreferencesGroup()
+
+        if not running:
+            group.add(FoxblatLabelRow("No Steam games detected"))
+        else:
+            for game in running:
+                row = Adw.ActionRow()
+                row.set_title(game.name)
+                row.set_subtitle(f"AppID: {game.app_id}")
+                row.connect("activated", lambda r, g=game: self._select_steam_game(g))
+                row.set_activatable(True)
+                group.add(row)
+
+        page = Adw.PreferencesPage()
+        page.add(group)
+
+        toolbar_view = Adw.ToolbarView()
+        toolbar_view.add_top_bar(Adw.HeaderBar())
+        toolbar_view.set_content(page)
+
+        self._navigation.push(Adw.NavigationPage(title="Select Steam game", child=toolbar_view))
+
+
+    def _select_steam_game(self, game: steam_handler.SteamGame, navigate_back: bool = True):
+        if navigate_back:
+            self._navigation.pop()
+        self._steam_appid = game.app_id
+        self._steam_name = game.name
+        self._steam_name_row.set_label(game.name)
+
+
+    # ------------------------------------------------------------------ Process page
+
     def _list_processes(self, entry: Adw.EntryRow, page: Adw.PreferencesPage):
         group = Adw.PreferencesGroup()
         filter_text = entry.get_text()
@@ -213,29 +341,22 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
             if not processes:
                 group.add(FoxblatLabelRow("No matching processes found"))
             else:
-                # Sort by process name for better UX
                 processes.sort(key=lambda p: p.name.lower())
 
                 for process_info in processes:
-                    # Create a row that shows both name and command line
                     row = Adw.ActionRow()
                     row.set_title(process_info.name)
 
-                    # Show command line as subtitle if it differs from name
                     if process_info.cmdline != process_info.name:
-                        # Truncate long command lines for display
                         cmdline_display = process_info.cmdline
                         if len(cmdline_display) > 80:
                             cmdline_display = cmdline_display[:77] + "..."
                         row.set_subtitle(cmdline_display)
 
-                    # When clicked, use the full command line as the pattern
-                    # This allows matching specific games even with same executable
                     row.connect("activated", lambda r, cmd=process_info.cmdline: self._select_process(cmd))
                     row.set_activatable(True)
                     group.add(row)
 
-        # Defer widget swap to avoid GTK layout conflicts during signal handling
         old_group = self._process_list_group
         self._process_list_group = group
 
@@ -247,10 +368,9 @@ class FoxblatPresetDialog(Adw.Dialog, EventDispatcher):
 
 
     def _select_process(self, cmdline_pattern: str):
-        """Called when user selects a process from the list."""
         self._navigation.pop()
         self._process_pattern = cmdline_pattern
-        self._auto_apply_name.set_label(cmdline_pattern)
+        self._auto_apply_name.set_label(_process_display_name(cmdline_pattern))
 
 
     def _open_process_page(self, *rest):

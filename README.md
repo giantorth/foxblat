@@ -23,8 +23,10 @@ Flatpack coming soon
 
 Foxblat provides the following additional features:
 * Telemetry support via Simd/SimAPI: https://github.com/Spacefreak18/simapi
-* Presets can be saved on extended paths, not limited to process name only
-* Presets can be saved by vehicle (When [simd](https://github.com/Spacefreak18/simapi) is running)
+* Presets overhauled entirely
+  * Save presets to the current running Steam game or use full path matching
+  * Presets can be saved by vehicle (When [simd](https://github.com/Spacefreak18/simapi) is running)
+  * Presets now grouped by game/process, easier handling of multiple vehicle-specific presets
 * A plugin system has been developed to extend support for additional devices
   * [Read the plugin documentation here](plugins/README.md)
   * An example plugin for the Aliexpress GX-100 shifter is included, linux users need [this driver](https://github.com/JacKeTUs/hid-gx100-shifter)

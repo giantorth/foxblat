@@ -2,6 +2,7 @@ import psutil
 from threading import Thread, Event
 from time import sleep
 from foxblat.subscription import EventDispatcher
+from foxblat import steam_handler
 from os import environ, path
 import subprocess
 
@@ -129,11 +130,13 @@ class ProcessObserver(EventDispatcher):
         super().__init__()
         self._shutdown = Event()
         self._current_process = "empty"
+        self._current_steam_appid = ""  # Currently running Steam app ID
         self._current_vehicle = ""
         self._vehicle_preset_active = False  # Track if a vehicle-specific preset is currently loaded
         self._simapi = None
         self._vehicle_presets = {}  # Maps "process|vehicle" -> True
         self._process_only_presets = set()  # Process patterns that have process-only presets
+        self._steam_games: dict[str, str] = {}  # Maps app_id -> event_key ("steam:{app_id}")
         self._register_event("no-games")
         Thread(target=self._process_observer_worker, daemon=True).start()
 
@@ -152,20 +155,28 @@ class ProcessObserver(EventDispatcher):
 
         self._current_vehicle = vehicle_name
 
-        if self._current_process == "empty":
+        # Determine active game key (process pattern or Steam event key)
+        if self._current_process != "empty":
+            active_key = self._current_process
+        elif self._current_steam_appid:
+            active_key = self._steam_games.get(self._current_steam_appid, "")
+        else:
             return  # No game running, ignore vehicle changes
 
-        # Try to find a process+vehicle combo preset
-        combo_key = f"{self._current_process}|{vehicle_name}"
+        if not active_key:
+            return
+
+        # Try to find a combo preset
+        combo_key = f"{active_key}|{vehicle_name}"
         if combo_key in self._vehicle_presets:
             print(f"Vehicle preset matched: {combo_key}")
             self._vehicle_preset_active = True
             self._dispatch(combo_key)
-        elif self._vehicle_preset_active and self._current_process in self._process_only_presets:
-            # Vehicle changed from one with a preset to one without - load process-only fallback
-            print(f"No vehicle preset for '{vehicle_name}', falling back to process preset")
+        elif self._vehicle_preset_active and active_key in self._process_only_presets:
+            # Vehicle changed from one with a preset to one without - load fallback
+            print(f"No vehicle preset for '{vehicle_name}', falling back to game preset")
             self._vehicle_preset_active = False
-            self._dispatch(self._current_process)
+            self._dispatch(active_key)
 
 
     def register_vehicle_preset(self, process_pattern: str, vehicle_name: str) -> None:
@@ -190,8 +201,21 @@ class ProcessObserver(EventDispatcher):
         return self._current_vehicle
 
     def has_active_process(self) -> bool:
-        """Check if a process preset is currently active."""
-        return self._current_process != "empty"
+        """Check if a process preset or Steam game preset is currently active."""
+        return self._current_process != "empty" or self._current_steam_appid != ""
+
+
+    def register_steam_game(self, app_id: str, event_key: str) -> None:
+        """Register a Steam AppID to watch for.
+
+        Args:
+            app_id: Steam application ID (numeric string)
+            event_key: Event to dispatch when this game is detected (e.g. "steam:805550")
+        """
+        if not app_id:
+            return
+        self._steam_games[app_id] = event_key
+        self._register_event(event_key)
 
 
     def _matches_pattern(self, pattern: str, process_info: ProcessInfo) -> bool:
@@ -231,12 +255,12 @@ class ProcessObserver(EventDispatcher):
             for pattern in self.list_events():
                 if pattern == "no-games":
                     continue
+                if pattern.startswith("steam:"):
+                    continue  # Handled separately below
 
                 # Check if any running process matches this pattern
-                matched = False
                 for process_info in process_list:
                     if self._matches_pattern(pattern, process_info):
-                        matched = True
                         # Only dispatch if this is a new match
                         if pattern != self._current_process:
                             print(f"Process pattern \"{pattern}\" matched: {process_info.name}")
@@ -245,28 +269,56 @@ class ProcessObserver(EventDispatcher):
                             self._dispatch(pattern)
                         break
 
+            # Detect running Steam games once per loop (shared by new-game and exit checks)
+            running_steam_ids: set[str] = set()
+            if self._steam_games or self._current_steam_appid:
+                running_steam_ids = self._check_steam_games()
+
             # If no patterns matched and we had an active process, dispatch no-games
+            process_still_active = False
             if self._current_process != "empty":
-                still_active = False
                 for pattern in self.list_events():
-                    if pattern == "no-games":
+                    if pattern == "no-games" or pattern.startswith("steam:"):
                         continue
                     if pattern == self._current_process:
-                        # Check if this pattern still matches
                         for process_info in process_list:
                             if self._matches_pattern(pattern, process_info):
-                                still_active = True
+                                process_still_active = True
                                 break
                         break
 
-                if not still_active:
+                if not process_still_active:
                     print(f"Process pattern \"{self._current_process}\" no longer active")
                     self._current_process = "empty"
-                    self._current_vehicle = ""  # Clear vehicle state when game exits
+                    if not self._current_steam_appid:
+                        self._current_vehicle = ""
+                        self._vehicle_preset_active = False
+                        self._dispatch("no-games")
+
+            if self._current_steam_appid and self._current_process == "empty":
+                if self._current_steam_appid not in running_steam_ids:
+                    print(f"Steam game {self._current_steam_appid} no longer active")
+                    self._current_steam_appid = ""
+                    self._current_vehicle = ""
                     self._vehicle_preset_active = False
                     self._dispatch("no-games")
 
             sleep(5)
+
+
+    def _check_steam_games(self) -> set[str]:
+        """Check for running Steam games, dispatch events for new matches, return running AppIDs."""
+        running_ids = {g.app_id for g in steam_handler.detect_running_steam_games()}
+
+        for app_id, event_key in self._steam_games.items():
+            if app_id in running_ids:
+                if app_id != self._current_steam_appid:
+                    print(f"Steam game detected: AppID {app_id} (event: {event_key})")
+                    self._current_steam_appid = app_id
+                    self._dispatch(event_key)
+                return running_ids  # Only one active Steam game at a time
+
+        return running_ids
 
 
     def register_process(self, process_pattern: str) -> None:
@@ -293,4 +345,5 @@ class ProcessObserver(EventDispatcher):
             self._deregister_event(name)
         self._vehicle_presets.clear()
         self._process_only_presets.clear()
+        self._steam_games.clear()
         self._vehicle_preset_active = False

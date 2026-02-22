@@ -32,10 +32,11 @@ class PresetSettings(SettingsPanel):
 
         self._save_row = None
         self._presets_path = os.path.join(self._settings.get_path(), "presets")
-        self._presets_list_group = None
+        self._presets_groups = []  # All dynamically created preset groups
         self._presets = []
         self._default_preset = None
         self._include_expander = None  # Store expander for adding plugin switches
+        self._current_preset_name = ""  # Track active preset for list highlighting
         super().__init__("Presets", button_callback, connection_manager)
         self.list_presets()
 
@@ -89,7 +90,6 @@ class PresetSettings(SettingsPanel):
         row.set_value(1)
         row.set_value(self._settings.read_setting("presets-include-wheel"))
         row.subscribe(self._settings.write_setting, "presets-include-wheel")
-        self._cm.subscribe_connected("wheel-telemetry-mode", row.set_active, 1, True)
         self._cm.subscribe_connected("wheel-rpm-value1", row.set_active, 1, True)
         self._includes["wheel"] = row.get_value
 
@@ -98,7 +98,6 @@ class PresetSettings(SettingsPanel):
         row.set_value(0)
         row.set_value(self._settings.read_setting("presets-include-wheel-colors"))
         row.subscribe(self._settings.write_setting, "presets-include-wheel-colors")
-        self._cm.subscribe_connected("wheel-telemetry-mode", row.set_active, 1, True)
         self._cm.subscribe_connected("wheel-rpm-value1", row.set_active, 1, True)
         self._includes["wheel-colors"] = row.get_value
 
@@ -164,6 +163,7 @@ class PresetSettings(SettingsPanel):
             self._save_row.set_sensitive(False)
 
             # Import Pithouse preset button
+            self.add_preferences_group("")
             self._import_row = Adw.ButtonRow(title="Import Pithouse Preset")
             self._import_row.set_end_icon_name("document-open-symbolic")
             self._add_row(self._import_row)
@@ -179,6 +179,7 @@ class PresetSettings(SettingsPanel):
             self._name_row.connect("notify::text-length", lambda e, *args: self._save_row.set_active(e.get_text_length()))
 
             # Import Pithouse preset button for older libadwaita
+            self.add_preferences_group("")
             self._import_row = FoxblatButtonRow("Import Pithouse preset", "Import")
             self._add_row(self._import_row)
             self._current_row.subscribe(self._import_pithouse_preset)
@@ -254,7 +255,11 @@ class PresetSettings(SettingsPanel):
     def _load_preset(self, preset_name: str, automatic=False, default=False):
         preset_name = preset_name.removesuffix(".yml")
         print(f"Loading preset \"{preset_name}\"")
+        prev_preset_name = self._current_preset_name
+        self._current_preset_name = preset_name
         GLib.idle_add(self._name_row.set_text, preset_name)
+        if preset_name != prev_preset_name:
+            GLib.idle_add(self.list_presets)
         pm = MozaPresetHandler(self._cm)
         pm.set_path(self._presets_path)
         pm.set_name(preset_name)
@@ -307,7 +312,10 @@ class PresetSettings(SettingsPanel):
 
 
     def list_presets(self, *rest):
-        self.remove_preferences_group(self._presets_list_group)
+        # Remove all previously created preset groups
+        for group in self._presets_groups:
+            self.remove_preferences_group(group)
+        self._presets_groups = []
 
         if not os.path.exists(self._presets_path):
             return
@@ -315,13 +323,17 @@ class PresetSettings(SettingsPanel):
         files = os.listdir(self._presets_path)
         files.sort()
 
-        self.add_preferences_group("Preset list")
-        self._presets_list_group = self._current_group
-
         pm = MozaPresetHandler(None)
         pm.set_path(self._presets_path)
         self._observer.deregister_all_processes()
         self._default_preset = None
+
+        current_preset = self._current_preset_name
+
+        # group_key -> list of (filename, preset_name, vehicle)
+        groups: dict[str, list[tuple[str, str, str]]] = {}
+        group_titles: dict[str, str] = {}  # group_key -> display title
+        unlinked: list[tuple[str, str, str]] = []
 
         for file in files:
             filepath = os.path.join(self._presets_path, file)
@@ -329,32 +341,113 @@ class PresetSettings(SettingsPanel):
                 continue
 
             preset_name = file.removesuffix(".yml")
-            row = FoxblatButtonRow(preset_name)
-            row.add_button("Load", self._load_preset, file)
-            row.add_button("Settings", self._show_preset_dialog, file)
-            # row.add_button("Delete", self._delete_preset, file).add_css_class("destructive-action")
-            self._add_row(row)
-
             pm.set_name(file)
+
+            steam_name = pm.get_linked_steam_name()
+            steam_appid = pm.get_linked_steam_appid()
             process = pm.get_linked_process()
             vehicle = pm.get_linked_vehicle()
 
-            if process and vehicle:
-                # Process+vehicle combo preset - higher priority
-                self._observer.register_process(process)
-                self._observer.register_vehicle_preset(process, vehicle)
-                combo_key = f"{process}|{vehicle}"
-                self._observer.subscribe(combo_key, self._load_preset, preset_name, True)
+            if steam_name:
+                group_key = steam_name
+                group_titles[group_key] = steam_name
             elif process:
-                # Process-only preset - fallback
-                self._observer.register_process(process)
-                self._observer.register_process_only_preset(process)
-                self._observer.subscribe(process, self._load_preset, preset_name, True)
+                group_key = process
+                group_titles[group_key] = os.path.basename(process.split()[0].replace("\\", "/")) or process
+            else:
+                unlinked.append((file, preset_name, vehicle))
+                continue
+
+            if group_key not in groups:
+                groups[group_key] = []
+            groups[group_key].append((file, preset_name, vehicle))
+
+            # Register with observer
+            if steam_appid:
+                event_key = f"steam:{steam_appid}"
+                self._observer.register_steam_game(steam_appid, event_key)
+                if vehicle:
+                    # Vehicle-specific Steam preset
+                    self._observer.register_vehicle_preset(event_key, vehicle)
+                    combo_key = f"{event_key}|{vehicle}"
+                    self._observer.subscribe(combo_key, self._load_preset, preset_name, True)
+                else:
+                    self._observer.subscribe(event_key, self._load_preset, preset_name, True)
+            elif process:
+                if vehicle:
+                    self._observer.register_process(process)
+                    self._observer.register_vehicle_preset(process, vehicle)
+                    combo_key = f"{process}|{vehicle}"
+                    self._observer.subscribe(combo_key, self._load_preset, preset_name, True)
+                else:
+                    self._observer.register_process(process)
+                    self._observer.register_process_only_preset(process)
+                    self._observer.subscribe(process, self._load_preset, preset_name, True)
 
             if pm.is_default():
                 print(f"Found default preset: {preset_name}")
                 self._default_preset = preset_name
-                self._presets_list_group.set_description(f"Default: {preset_name}")
+
+        # Also check unlinked list for default
+        for file, preset_name, vehicle in unlinked:
+            pm.set_name(file)
+            if pm.is_default():
+                print(f"Found default preset: {preset_name}")
+                self._default_preset = preset_name
+
+        # Find which named group (if any) contains the currently active preset
+        active_group_key = None
+        for gk, items in groups.items():
+            if any(pname == current_preset for _, pname, _ in items):
+                active_group_key = gk
+                break
+
+        # Render order: active named group → Unlinked → remaining named groups (alpha)
+        sorted_remaining = sorted(k for k in groups.keys() if k != active_group_key)
+
+        def _render_named_group(group_key):
+            self.add_preferences_group(group_titles.get(group_key, group_key))
+            self._presets_groups.append(self._current_group)
+            if self._default_preset:
+                for _, pname, _ in groups[group_key]:
+                    if pname == self._default_preset:
+                        self._current_group.set_description(f"Default: {self._default_preset}")
+                        break
+            for file, preset_name, vehicle in groups[group_key]:
+                row = FoxblatButtonRow(preset_name)
+                if vehicle:
+                    row.set_subtitle(vehicle)
+                if preset_name == current_preset:
+                    row.add_prefix(Gtk.Image.new_from_icon_name("object-select-symbolic"))
+                    row.add_css_class("success")
+                row.add_button("Load", self._load_preset, file)
+                row.add_button("Settings", self._show_preset_dialog, file)
+                self._add_row(row)
+
+        if active_group_key:
+            _render_named_group(active_group_key)
+
+        if unlinked:
+            self.add_preferences_group("Unlinked")
+            self._presets_groups.append(self._current_group)
+            if self._default_preset:
+                for _, pname, _ in unlinked:
+                    if pname == self._default_preset:
+                        self._current_group.set_description(f"Default: {self._default_preset}")
+                        break
+            for file, preset_name, vehicle in unlinked:
+                row = FoxblatButtonRow(preset_name)
+                if vehicle:
+                    row.set_subtitle(vehicle)
+                if preset_name == current_preset:
+                    row.add_prefix(Gtk.Image.new_from_icon_name("object-select-symbolic"))
+                    row.add_css_class("success")
+                row.add_button("Load", self._load_preset, file)
+                row.add_button("Settings", self._show_preset_dialog, file)
+                self._add_row(row)
+
+        for group_key in sorted_remaining:
+            _render_named_group(group_key)
 
 
     def _handle_preset_save(self, file_name: str):
