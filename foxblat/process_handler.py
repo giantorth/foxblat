@@ -226,7 +226,6 @@ class ProcessObserver(EventDispatcher):
 
     def _process_observer_worker(self) -> None:
         while not self._shutdown.is_set():
-            sleep(5)
             process_list = list_processes()
 
             for pattern in self.list_events():
@@ -266,6 +265,8 @@ class ProcessObserver(EventDispatcher):
                     self._current_vehicle = ""  # Clear vehicle state when game exits
                     self._vehicle_preset_active = False
                     self._dispatch("no-games")
+
+            sleep(5)
 
 
     def register_process(self, process_pattern: str) -> None:

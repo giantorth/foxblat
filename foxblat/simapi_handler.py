@@ -190,6 +190,8 @@ class SimApiHandler(EventDispatcher):
         self._blink_counter = 0  # Frame counter for blink timing
         self._blink_interval = 4  # Toggle every N frames (~7 blinks/sec at 60Hz)
 
+        self._raw_counter = 0
+
         # Watchdog for detecting stale connections (simd restart)
         self._last_mtick = 0
         self._stale_count = 0
@@ -208,7 +210,6 @@ class SimApiHandler(EventDispatcher):
         self._wheel_enabled = False
         self._wheel_old_protocol = False  # True for ES wheel (old protocol)
         self._wheel_colors_sent = False  # Track if we've sent color config
-        self._auto_enable = True
         self._debug = True  # Enable debug output
         self._debug_ui_enabled = False  # UI debug view toggle
 
@@ -312,10 +313,6 @@ class SimApiHandler(EventDispatcher):
         elif not old_protocol:
             self._thresholds = DEFAULT_THRESHOLDS.copy()
 
-    def set_auto_enable(self, enabled: bool) -> None:
-        """Enable/disable auto-start when sim is detected."""
-        self._auto_enable = enabled
-
     def set_debug_ui_enabled(self, enabled: bool) -> None:
         """Enable/disable debug UI data dispatching."""
         self._debug_ui_enabled = enabled
@@ -375,10 +372,6 @@ class SimApiHandler(EventDispatcher):
         self._maxrpm_before_change = 0
         if self._debug:
             print("[SimAPI] Max RPM calibration reset")
-
-    def get_calibrated_maxrpm(self) -> int:
-        """Get the current auto-calibrated max RPM."""
-        return self._calibrated_maxrpm
 
     def get_current_car_name(self) -> str:
         """Get the current car name, or empty string if none detected."""
@@ -586,19 +579,17 @@ class SimApiHandler(EventDispatcher):
             effective_maxrpm = data.maxrpm
 
         # Debug: print raw values periodically (after effective_maxrpm is calculated)
-        if self._debug and data.simstatus == SIMAPI_STATUS_ACTIVE:
-            if not hasattr(self, '_debug_counter'):
-                self._debug_counter = 0
-            self._debug_counter += 1
-            if self._debug_counter % 300 == 0:  # Every ~10 second at 60Hz
-                print(f"[SimAPI] RPM: {data.rpms}, MaxRPM: {data.maxrpm} (eff: {effective_maxrpm}), IdleRPM: {data.idlerpm}, Gear: {data.gear}")
+        # if self._debug and data.simstatus == SIMAPI_STATUS_ACTIVE:
+        #     if not hasattr(self, '_debug_counter'):
+        #         self._debug_counter = 0
+        #     self._debug_counter += 1
+        #     if self._debug_counter % 300 == 0:  # Every ~10 second at 60Hz
+        #         print(f"[SimAPI] RPM: {data.rpms}, MaxRPM: {data.maxrpm} (eff: {effective_maxrpm}), IdleRPM: {data.idlerpm}, Gear: {data.gear}")
 
         # Calculate RPM percentage using effective max
         rpm_percent = self._calculate_rpm_percent(data.rpms, effective_maxrpm, data.idlerpm)
 
         # Dispatch raw RPM data periodically for display (every 10 polls = ~6Hz at 60Hz poll rate)
-        if not hasattr(self, '_raw_counter'):
-            self._raw_counter = 0
         self._raw_counter += 1
         if self._raw_counter % 10 == 0:
             self._dispatch("rpm-raw", (data.rpms, data.maxrpm, data.idlerpm, effective_maxrpm))
