@@ -267,6 +267,15 @@ class ProcessObserver(EventDispatcher):
                             print(f"  Command line: {process_info.cmdline}")
                             self._current_process = pattern
                             self._dispatch(pattern)
+                            # If SimAPI already reported a vehicle before this process was
+                            # detected (e.g. simd was running at app startup), check for a
+                            # vehicle-specific preset now so it isn't silently skipped.
+                            if self._current_vehicle:
+                                combo_key = f"{pattern}|{self._current_vehicle}"
+                                if combo_key in self._vehicle_presets:
+                                    print(f"Vehicle preset matched at process detection: {combo_key}")
+                                    self._vehicle_preset_active = True
+                                    self._dispatch(combo_key)
                         break
 
             # Detect running Steam games once per loop (shared by new-game and exit checks)
@@ -316,6 +325,14 @@ class ProcessObserver(EventDispatcher):
                     print(f"Steam game detected: AppID {app_id} (event: {event_key})")
                     self._current_steam_appid = app_id
                     self._dispatch(event_key)
+                    # If SimAPI already reported a vehicle before this steam game was
+                    # detected, check for a vehicle-specific preset now.
+                    if self._current_vehicle:
+                        combo_key = f"{event_key}|{self._current_vehicle}"
+                        if combo_key in self._vehicle_presets:
+                            print(f"Vehicle preset matched at steam detection: {combo_key}")
+                            self._vehicle_preset_active = True
+                            self._dispatch(combo_key)
                 return running_ids  # Only one active Steam game at a time
 
         return running_ids

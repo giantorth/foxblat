@@ -507,6 +507,7 @@ class PresetSettings(SettingsPanel):
             _render_named_group(group_key)
 
 
+
     def _handle_preset_save(self, file_name: str):
         if not os.path.exists(self._presets_path):
             return

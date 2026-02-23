@@ -572,8 +572,8 @@ class SimApiHandler(EventDispatcher):
             # Update calibration if we see a valid higher RPM
             if self._calibrated_maxrpm < data.rpms <= MAX_REASONABLE_RPM:
                 self._calibrated_maxrpm = data.rpms
-                if self._debug:
-                    print(f"[SimAPI] Auto-calibrated maxRPM: {self._calibrated_maxrpm}")
+                # if self._debug:
+                #     print(f"[SimAPI] Auto-calibrated maxRPM: {self._calibrated_maxrpm}")
             effective_maxrpm = int(self._calibrated_maxrpm * self._calibration_buffer)
         else:
             effective_maxrpm = data.maxrpm
