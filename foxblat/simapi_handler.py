@@ -217,6 +217,8 @@ class SimApiHandler(EventDispatcher):
         self._wheel_colors = [None] * 10  # [R,G,B] per LED from device
         self._es_thresholds = None  # Percent thresholds from wheel-rpm-timings
         self._es_blink_interval_ms = None  # Blink interval from wheel-rpm-interval
+        self._rpm_mode = 0  # 0=percent thresholds, 1=absolute RPM thresholds
+        self._absolute_rpm_thresholds = [0] * 10  # Absolute RPM values per LED
 
         # Register events
         self._register_events(
@@ -346,6 +348,17 @@ class SimApiHandler(EventDispatcher):
             self._on_es_blink_interval_update
         )
 
+        self._connection_manager.subscribe(
+            "wheel-rpm-mode",
+            self._on_rpm_mode_update
+        )
+
+        for i in range(10):
+            self._connection_manager.subscribe(
+                f"wheel-rpm-value{i+1}",
+                self._on_rpm_value_update, i
+            )
+
     def _on_wheel_color_update(self, color_value, index: int) -> None:
         """Cache a wheel LED color when it arrives from the device."""
         if isinstance(color_value, (list, tuple)) and len(color_value) == 3:
@@ -365,6 +378,16 @@ class SimApiHandler(EventDispatcher):
             self._es_blink_interval_ms = int(interval_ms)
             frames_per_toggle = max(1, int((interval_ms / 1000.0) * self._poll_rate / 2))
             self._blink_interval = frames_per_toggle
+
+    def _on_rpm_mode_update(self, mode) -> None:
+        """Cache wheel RPM mode (0=percent thresholds, 1=absolute RPM thresholds)."""
+        if isinstance(mode, int):
+            self._rpm_mode = mode
+
+    def _on_rpm_value_update(self, value, index: int) -> None:
+        """Cache absolute RPM threshold for a specific LED."""
+        if isinstance(value, (int, float)) and 0 <= index < 10:
+            self._absolute_rpm_thresholds[index] = int(value)
 
     def reset_calibration(self) -> None:
         """Reset the auto-calibrated max RPM."""
@@ -604,10 +627,18 @@ class SimApiHandler(EventDispatcher):
             self._dispatch("rpm-percent", rpm_percent)
 
         # Calculate bitmask and send telemetry
-        bitmask = self._calculate_bitmask(rpm_percent)
+        if self._rpm_mode == 1:
+            bitmask = self._calculate_bitmask_rpm(data.rpms)
+            blink_triggered = (
+                any(t > 0 for t in self._absolute_rpm_thresholds) and
+                data.rpms >= self._absolute_rpm_thresholds[-1]
+            )
+        else:
+            bitmask = self._calculate_bitmask(rpm_percent)
+            blink_triggered = rpm_percent >= self._blink_threshold
 
         # Blink LEDs when RPM is at/above threshold
-        if rpm_percent >= self._blink_threshold:
+        if blink_triggered:
             self._blink_counter += 1
             if self._blink_counter >= self._blink_interval:
                 self._blink_counter = 0
@@ -651,6 +682,14 @@ class SimApiHandler(EventDispatcher):
         bitmask = 0
         for i, threshold in enumerate(self._thresholds):
             if rpm_percent >= threshold:
+                bitmask = set_bit(bitmask, i)
+        return bitmask
+
+    def _calculate_bitmask_rpm(self, rpm: int) -> int:
+        """Convert absolute RPM to LED bitmask using absolute RPM thresholds."""
+        bitmask = 0
+        for i, threshold in enumerate(self._absolute_rpm_thresholds):
+            if threshold > 0 and rpm >= threshold:
                 bitmask = set_bit(bitmask, i)
         return bitmask
 
