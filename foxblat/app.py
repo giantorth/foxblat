@@ -292,9 +292,9 @@ class MyApp(Adw.Application):
         notif.set_body(f"You can disable this behavior in Other settings")
         notif.set_priority(NotificationPriority.NORMAL)
 
-        self.send_notification("background", notif)
+        GLib.idle_add(self.send_notification, "background", notif)
         sleep(10)
-        self.withdraw_notification("background")
+        GLib.idle_add(self.withdraw_notification, "background")
 
 
     def switch_panel(self, button):

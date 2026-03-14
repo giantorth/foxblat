@@ -238,7 +238,7 @@ class OldWheelSettings(SettingsPanel):
 
 
         self._timing_row2 = FoxblatEqRow("RPM Indicator Timing", 10, "Is it my turn now?",
-            range_start=2000, range_end=18_000, button_row=False, draw_marks=False, increment=100)
+            range_start=2000, range_end=20_000, button_row=False, draw_marks=False, increment=100)
 
         self._add_row(self._timing_row2)
         self._timing_row2.add_buttons("Early", "Normal", "Late")
@@ -251,6 +251,18 @@ class OldWheelSettings(SettingsPanel):
             self._cm.subscribe(f"wheel-rpm-value{i+1}", self._timing_row2.set_slider_value, i)
         self._cm.subscribe(f"wheel-rpm-value10", self._get_rpm_timings2_preset)
 
+        self._rpm_range_slider = FoxblatSliderRow("Max RPM", range_start=4000, range_end=20000,
+            increment=500, subtitle="Upper range for RPM timing sliders")
+        self._add_row(self._rpm_range_slider)
+        self._rpm_range_slider.add_marks(8000, 12000, 16000)
+        self._rpm_range_slider.set_present(0)
+        self._rpm_range_slider.subscribe(self._set_rpm_range)
+        self._rpm_range_slider.subscribe(self._settings.write_setting, "wheel-rpm-max-range")
+
+        saved_range = self._settings.read_setting("wheel-rpm-max-range")
+        if saved_range is not None:
+            self._rpm_range_slider.set_value(int(saved_range))
+            self._timing_row2.reconfigure(range_start=2000, range_end=int(saved_range))
 
         self._cm.subscribe("wheel-rpm-timings", self._get_rpm_timings)
         self._cm.subscribe("wheel-rpm-timings", self._get_rpm_timings_preset)
@@ -331,6 +343,11 @@ class OldWheelSettings(SettingsPanel):
     def _reconfigure_timings(self, value: int):
         self._timing_row.set_present(value < 1)
         self._timing_row2.set_present(value >= 1)
+        self._rpm_range_slider.set_present(value >= 1)
+
+
+    def _set_rpm_range(self, value: int):
+        self._timing_row2.reconfigure(range_start=2000, range_end=value)
 
 
     def _calibrate_paddles(self, value: int, *_):

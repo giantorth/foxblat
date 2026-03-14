@@ -342,9 +342,9 @@ class PresetSettings(SettingsPanel):
         notif.set_body(f"Loading {"default" if default else ""} preset: {preset_name}")
         notif.set_priority(NotificationPriority.NORMAL)
 
-        app.send_notification("preset", notif)
+        GLib.idle_add(app.send_notification, "preset", notif)
         sleep(10)
-        app.withdraw_notification("preset")
+        GLib.idle_add(app.withdraw_notification, "preset")
 
 
     def _delete_preset(self, preset_name: str, *args):
